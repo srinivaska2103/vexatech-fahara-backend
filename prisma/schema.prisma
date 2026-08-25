@@ -1,0 +1,482 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bookings {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_number        String          @unique @db.VarChar(30)
+  customer_id           String          @db.Uuid
+  cafe_id               String          @db.Uuid
+  package_id            String?         @db.Uuid
+  event_service_id      String?         @db.Uuid
+  booking_date          DateTime        @db.Date
+  start_time            DateTime        @db.Time(6)
+  end_time              DateTime        @db.Time(6)
+  hours                 Int
+  total_persons         Int
+  cafe_amount           Decimal?        @default(0.00) @db.Decimal(10, 2)
+  event_service_amount  Decimal?        @default(0.00) @db.Decimal(10, 2)
+  food_amount           Decimal?        @default(0.00) @db.Decimal(10, 2)
+  decoration_amount     Decimal?        @default(0.00) @db.Decimal(10, 2)
+  extra_person_amount   Decimal?        @default(0.00) @db.Decimal(10, 2)
+  subtotal              Decimal?        @default(0.00) @db.Decimal(10, 2)
+  discount              Decimal?        @default(0.00) @db.Decimal(10, 2)
+  gst                   Decimal?        @default(0.00) @db.Decimal(10, 2)
+  fahara_service_charge Decimal?        @default(0.00) @db.Decimal(10, 2)
+  transaction_fee       Decimal?        @default(0.00) @db.Decimal(10, 2)
+  total                 Decimal?        @default(0.00) @db.Decimal(10, 2)
+  payment_status        String?         @default("PENDING") @db.VarChar(20)
+  booking_status        String?         @default("PENDING") @db.VarChar(20)
+  special_request       String?
+  created_at            DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at            DateTime?       @default(now()) @db.Timestamp(6)
+  cafes                 cafes           @relation(fields: [cafe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                 users           @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  event_services        event_services? @relation(fields: [event_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  notifications         notifications[]
+  payments              payments[]
+  payment_refunds       payment_refunds[]
+  reviews               reviews[]
+}
+
+model cafe_packages {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id         String    @db.Uuid
+  package_name    String    @db.VarChar(255)
+  description     String?
+  price           Decimal?  @db.Decimal(10, 2)
+  minimum_persons Int?
+  maximum_persons Int?
+  duration_hours  Int?
+  cover_image     String?
+  gallery         Json?
+  is_active       Boolean?  @default(true)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+  inclusions      Json?
+  cafes           cafes     @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([is_active], map: "idx_cafe_packages_active")
+  @@index([cafe_id], map: "idx_cafe_packages_cafe")
+  @@index([package_name], map: "idx_cafe_packages_name")
+  @@index([inclusions], map: "idx_cafe_packages_inclusions", type: Gin)
+}
+
+model cafes {
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id                String                @db.Uuid
+  name                    String                @db.VarChar(200)
+  description             String?
+  address                 String?
+  city                    String?               @db.VarChar(100)
+  latitude                Decimal?              @db.Decimal(10, 8)
+  longitude               Decimal?              @db.Decimal(11, 8)
+  google_place_id         String?
+  google_rating           Decimal?              @default(0) @db.Decimal(2, 1)
+  price_per_hour          Decimal?              @db.Decimal(10, 2)
+  minimum_persons         Int?
+  maximum_persons         Int?
+  provides_event_services Boolean?              @default(false)
+  cover_image             String?
+  gallery                 Json?
+  average_rating          Decimal?              @default(0) @db.Decimal(2, 1)
+  total_reviews           Int?                  @default(0)
+  status                  String?               @default("PENDING") @db.VarChar(20)
+  razorpay_account_id         String?               @db.VarChar(100)
+  razorpay_linked_account_id  String?               @db.VarChar(100)
+  razorpay_account_status     String?               @default("NOT_CREATED") @db.VarChar(30)
+  payment_account_provider    String?               @default("RAZORPAY") @db.VarChar(30)
+  payment_account_id          String?               @db.VarChar(100)
+  bank_verification_status    String?               @default("PENDING") @db.VarChar(30)
+  bank_account_last4          String?               @db.VarChar(4)
+  bank_account_holder         String?               @db.VarChar(200)
+  bank_ifsc                   String?               @db.VarChar(20)
+  bank_verified_at            DateTime?             @db.Timestamp(6)
+  bank_verification_reference String?               @db.VarChar(100)
+  created_at                  DateTime?             @default(now()) @db.Timestamp(6)
+  amenities                   Json?
+  bookings                bookings[]
+  cafe_business_hours     cafe_business_hours[]
+  cafe_packages           cafe_packages[]
+  users                   users                 @relation(fields: [owner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  favorites               favorites[]
+  reviews                 reviews[]
+
+  @@index([city], map: "idx_cafes_city")
+  @@index([owner_id], map: "idx_cafes_owner")
+  @@index([status], map: "idx_cafes_status")
+}
+
+model event_services {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  category       String?   @db.VarChar(100)
+  service_name   String    @db.VarChar(200)
+  description    String?
+  price          Decimal?  @db.Decimal(10, 2)
+  gallery        Json?
+  inclusions     Json?
+  average_rating Decimal?  @default(0) @db.Decimal(2, 1)
+  total_reviews  Int?      @default(0)
+  status         String?   @default("ACTIVE") @db.VarChar(20)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reviews        reviews[]
+  bookings       bookings[]
+
+  @@index([category], map: "idx_event_services_category")
+  @@index([status], map: "idx_event_services_status")
+  @@index([user_id], map: "idx_event_services_user")
+}
+
+model favorites {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?   @db.Uuid
+  cafe_id    String?   @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  cafes      cafes?    @relation(fields: [cafe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([user_id, cafe_id])
+}
+
+model media {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_type String?   @db.VarChar(30)
+  owner_id   String?   @db.Uuid
+  file_url   String?
+  file_type  String?   @db.VarChar(30)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model notifications {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @db.Uuid
+  booking_id        String?   @db.Uuid
+  title             String?   @db.VarChar(255)
+  message           String?
+  notification_type String?   @db.VarChar(30)
+  channel           String?   @db.VarChar(20)
+  status            String?   @db.VarChar(20)
+  sent_at           DateTime? @db.Timestamp(6)
+  read_at           DateTime? @db.Timestamp(6)
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  bookings          bookings? @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users             users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model otp_verifications {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String    @db.VarChar(255)
+  otp        String    @db.VarChar(6)
+  expires_at DateTime  @db.Timestamp(6)
+  verified   Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model payments {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id         String?          @db.Uuid
+  amount             Decimal?         @db.Decimal(10, 2)
+  platform_fee       Decimal?         @default(0.00) @db.Decimal(10, 2)
+  gst_amount         Decimal?         @default(0.00) @db.Decimal(10, 2)
+  payment_gateway    String?          @default("RAZORPAY") @db.VarChar(30)
+  payment_provider   String?          @default("RAZORPAY") @db.VarChar(30)
+  payment_session_id String?          @db.VarChar(255)
+  gateway_order_id   String?          @unique
+  gateway_payment_id String?
+  provider_order_id  String?          @db.VarChar(100)
+  provider_payment_id String?         @db.VarChar(100)
+  provider_signature  String?         @db.VarChar(255)
+  transaction_id     String?
+  payment_method     String?          @db.VarChar(50)
+  status             String?          @default("PENDING") @db.VarChar(30)
+  payout_status      String?          @default("PENDING") @db.VarChar(20)
+  payout_completed_at DateTime?       @db.Timestamp(6)
+  paid_at            DateTime?        @db.Timestamp(6)
+  created_at         DateTime?        @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?        @default(now()) @db.Timestamp(6)
+  bookings           bookings?        @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_splits     payment_splits[]
+  payment_refunds    payment_refunds[]
+}
+
+model payment_splits {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id           String    @db.Uuid
+  vendor_type          String    @db.VarChar(30)
+  vendor_id            String?   @db.Uuid
+  razorpay_account_id  String?   @db.VarChar(100)
+  payment_account_id   String?   @db.VarChar(100)
+  provider_transfer_id String?   @db.VarChar(100)
+  transfer_status      String?   @default("NOT_CREATED") @db.VarChar(30)
+  split_amount         Decimal   @db.Decimal(10, 2)
+  settlement_status    String    @default("PENDING") @db.VarChar(30)
+  settlement_id        String?   @db.VarChar(100)
+  processed_at         DateTime? @db.Timestamp(6)
+  settled_at           DateTime? @db.Timestamp(6)
+  created_at           DateTime? @default(now()) @db.Timestamp(6)
+  updated_at           DateTime? @default(now()) @db.Timestamp(6)
+  payments             payments  @relation(fields: [payment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([payment_id], map: "idx_payment_splits_payment")
+  @@index([vendor_id], map: "idx_payment_splits_vendor")
+  @@index([settlement_status], map: "idx_payment_splits_status")
+}
+
+model payment_refunds {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id         String    @db.Uuid
+  booking_id         String    @db.Uuid
+  refund_amount      Decimal   @db.Decimal(10, 2)
+  razorpay_refund_id String?   @db.VarChar(100)
+  provider_refund_id String?   @db.VarChar(100)
+  provider_reversal_id String? @db.VarChar(100)
+  refund_status      String    @default("PENDING") @db.VarChar(30)
+  reason             String?
+  initiated_by       String?   @db.VarChar(50)
+  completed_at       DateTime? @db.Timestamp(6)
+  created_at         DateTime? @default(now()) @db.Timestamp(6)
+  updated_at         DateTime? @default(now()) @db.Timestamp(6)
+  payments           payments  @relation(fields: [payment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  bookings           bookings  @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([payment_id], map: "idx_payment_refunds_payment")
+  @@index([booking_id], map: "idx_payment_refunds_booking")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reviews {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id       String?   @db.Uuid
+  customer_id      String?   @db.Uuid
+  cafe_id          String?   @db.Uuid
+  event_service_id String?   @db.Uuid
+  rating           Int?
+  review           String?
+  reply            String?
+  reply_at         DateTime? @db.Timestamp(6)
+  images           Json?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  bookings         bookings? @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cafes            cafes?    @relation(fields: [cafe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  event_services   event_services? @relation(fields: [event_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users            users?    @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model roles {
+  id    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name  String  @unique @db.VarChar(30)
+  users users[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_devices {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  fcm_token   String
+  device_type String?   @db.VarChar(20)
+  device_name String?   @db.VarChar(150)
+  app_version String?   @db.VarChar(30)
+  is_active   Boolean?  @default(true)
+  last_seen   DateTime? @db.Timestamp(6)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model users {
+  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role_id                   String                     @db.Uuid
+  name                      String                     @db.VarChar(150)
+  email                     String                     @unique @db.VarChar(255)
+  phone                     String?                    @unique @db.VarChar(20)
+  password_hash             String?
+  dob                       DateTime?                  @db.Date
+  gender                    String?                    @db.VarChar(20)
+  bio                       String?
+  business_name             String?                    @db.VarChar(200)
+  gst_number                String?                    @db.VarChar(30)
+  bank_name                 String?                    @db.VarChar(150)
+  account_holder            String?                    @db.VarChar(150)
+  account_number            String?                    @db.VarChar(50)
+  ifsc_code                 String?                    @db.VarChar(20)
+  upi_id                    String?                    @db.VarChar(100)
+  address                   String?
+  city                      String?                    @db.VarChar(100)
+  state                     String?                    @db.VarChar(100)
+  country                   String?                    @db.VarChar(100)
+  pincode                   String?                    @db.VarChar(15)
+  profile_image             String?
+  description               String?
+  email_verified            Boolean?                   @default(false)
+  owner_onboarding_completed Boolean?                  @default(false)
+  owner_onboarding_completed_at DateTime?               @db.Timestamp(6)
+  status                    String?                    @default("ACTIVE") @db.VarChar(20)
+  created_at                DateTime?                  @default(now()) @db.Timestamp(6)
+  updated_at                DateTime?                  @default(now()) @db.Timestamp(6)
+  bookings                  bookings[]
+  cafes                     cafes[]
+  event_business_hours      event_business_hours[]
+  event_management_profiles event_management_profiles?
+  event_services            event_services[]
+  audit_logs                audit_logs[]        @relation("audit_logs_admin")
+  security_sessions         security_sessions[] @relation("security_sessions_user")
+  login_history             login_history[]     @relation("login_history_user")
+  favorites                 favorites[]
+  notifications             notifications[]
+  reviews                   reviews[]
+  user_devices              user_devices[]
+  customer_notes_as_customer customer_notes[] @relation("customer_notes_customer")
+  customer_notes_as_owner    customer_notes[] @relation("customer_notes_owner")
+  roles                     roles                      @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model event_business_hours {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  day_of_week String    @db.VarChar(10)
+  open_time   DateTime? @db.Time(6)
+  close_time  DateTime? @db.Time(6)
+  is_closed   Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, day_of_week], map: "uq_event_business_day")
+  @@index([user_id], map: "idx_event_business_hours_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model event_management_profiles {
+  id                           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                      String    @unique @db.Uuid
+  company_name                 String    @db.VarChar(255)
+  company_logo                 String?
+  company_banner               String?
+  description                  String?
+  business_registration_number String?   @db.VarChar(100)
+  established_year             Int?
+  experience_years             Int?      @default(0)
+  business_email               String?   @db.VarChar(255)
+  business_phone               String?   @db.VarChar(20)
+  alternate_phone              String?   @db.VarChar(20)
+  website_url                  String?
+  instagram_url                String?
+  facebook_url                 String?
+  youtube_url                  String?
+  linkedin_url                 String?
+  address_line1                String?   @db.VarChar(255)
+  address_line2                String?   @db.VarChar(255)
+  city                         String?   @db.VarChar(100)
+  state                        String?   @db.VarChar(100)
+  country                      String?   @default("India") @db.VarChar(100)
+  postal_code                  String?   @db.VarChar(20)
+  latitude                     Decimal?  @db.Decimal(10, 8)
+  longitude                    Decimal?  @db.Decimal(11, 8)
+  service_radius_km            Int?      @default(25)
+  verification_status          String?   @default("PENDING") @db.VarChar(20)
+  razorpay_account_id          String?   @db.VarChar(100)
+  razorpay_linked_account_id   String?   @db.VarChar(100)
+  razorpay_account_status      String?   @default("NOT_CREATED") @db.VarChar(30)
+  payment_account_provider     String?   @default("RAZORPAY") @db.VarChar(30)
+  payment_account_id           String?   @db.VarChar(100)
+  bank_verification_status     String?   @default("PENDING") @db.VarChar(30)
+  bank_account_last4           String?   @db.VarChar(4)
+  bank_account_holder          String?   @db.VarChar(200)
+  bank_ifsc                    String?   @db.VarChar(20)
+  bank_verified_at             DateTime? @db.Timestamp(6)
+  bank_verification_reference  String?   @db.VarChar(100)
+  profile_completion           Int?      @default(0)
+  average_rating               Decimal?  @default(0) @db.Decimal(2, 1)
+  total_reviews                Int?      @default(0)
+  total_bookings               Int?      @default(0)
+  total_completed_events       Int?      @default(0)
+  is_featured                  Boolean?  @default(false)
+  is_active                    Boolean?  @default(true)
+  created_at                   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                   DateTime? @default(now()) @db.Timestamp(6)
+  users                        users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([city], map: "idx_event_profile_city")
+  @@index([verification_status], map: "idx_event_profile_status")
+  @@index([user_id], map: "idx_event_profile_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cafe_business_hours {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id     String    @db.Uuid
+  day_of_week String    @db.VarChar(10)
+  open_time   DateTime? @db.Time(6)
+  close_time  DateTime? @db.Time(6)
+  is_closed   Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+  cafes       cafes     @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([cafe_id, day_of_week], map: "uq_cafe_business_day")
+  @@unique([cafe_id, day_of_week], map: "uq_cafe_day")
+  @@index([cafe_id], map: "idx_cafe_business_hours_cafe")
+}
+
+model customer_notes {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id String    @db.Uuid
+  owner_id    String    @db.Uuid
+  note        String
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+  
+  users_customer users  @relation("customer_notes_customer", fields: [customer_id], references: [id], onDelete: Cascade)
+  users_owner    users  @relation("customer_notes_owner", fields: [owner_id], references: [id], onDelete: Cascade)
+}
+
+model audit_logs {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  admin_id    String?   @db.Uuid
+  action      String    @db.VarChar(100)
+  entity      String    @db.VarChar(100)
+  entity_id   String?   @db.VarChar(100)
+  ip_address  String?   @db.VarChar(45)
+  metadata    Json?
+  status      String?   @db.VarChar(20) @default("success")
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+
+  admin       users?    @relation("audit_logs_admin", fields: [admin_id], references: [id], onDelete: SetNull)
+}
+
+model security_sessions {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  device         String?   @db.VarChar(100)
+  os             String?   @db.VarChar(50)
+  browser        String?   @db.VarChar(50)
+  ip_address     String?   @db.VarChar(45)
+  location       String?   @db.VarChar(100)
+  is_current     Boolean?  @default(true)
+  last_active_at DateTime? @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  user           users     @relation("security_sessions_user", fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model login_history {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String?   @db.Uuid
+  email          String?   @db.VarChar(255)
+  status         String    @db.VarChar(20)
+  ip_address     String?   @db.VarChar(45)
+  device         String?   @db.VarChar(100)
+  location       String?   @db.VarChar(100)
+  reason         String?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  user           users?    @relation("login_history_user", fields: [user_id], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,30 @@
+{
+  "body": {
+    "event_type": "Birthday Party",
+    "package_name": "Birthday",
+    "description": "Test Birthday",
+    "price": 1,
+    "duration_hours": 1,
+    "minimum_persons": 10,
+    "maximum_persons": 20,
+    "food": true,
+    "cake": true,
+    "decoration": true,
+    "music": true,
+    "other": false,
+    "other_text": "",
+    "cover_image": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1787626815/fahara_uploads/e8uzyhzeylwobhw2qyaj.jpg",
+    "status": "PUBLISHED",
+    "custom_category": "Birthday Party",
+    "gallery": [
+      {
+        "file": {},
+        "url": "blob:http://localhost:3001/4f12f5e2-6fa5-491a-8d2f-ae83cad51bfb",
+        "id": "pxp51cl6r"
+      }
+    ]
+  },
+  "params": {
+    "packageId": "0213d3c3-48f5-4aac-a041-6391f4002515"
+  }
+}
