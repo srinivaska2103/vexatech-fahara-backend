@@ -1,4 +1,4 @@
-Error: An account with this phone number already exists.
-    at Object.registerUser (D:\Srinivas\backend\fahara-backend\src\services\authService.js:34:21)
+Error: Event profile not found for this user
+    at Object.createEventService (D:\Srinivas\backend\fahara-backend\src\services\eventService.js:7:19)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async register (D:\Srinivas\backend\fahara-backend\src\controllers\authController.js:5:20)
+    at async createService (D:\Srinivas\backend\fahara-backend\src\controllers\eventServiceController.js:5:20)

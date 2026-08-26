@@ -25,6 +25,7 @@ const cafeSchema = Joi.object({
   amenities: Joi.alternatives().try(Joi.array(), Joi.object()).allow(null),
   business_hours: Joi.object().allow(null),
   status: Joi.string().valid('PENDING', 'ACTIVE', 'INACTIVE', 'DRAFT', 'APPROVED', 'REJECTED', 'SUSPENDED').default('PENDING'),
+  category: Joi.string().allow('', null),
   rejection_reason: Joi.string().allow('', null),
   is_featured: Joi.boolean().allow(null),
 });

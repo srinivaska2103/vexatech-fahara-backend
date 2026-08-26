@@ -19,6 +19,20 @@ const getProfileByUserId = async (userId) => {
   return profile;
 };
 
+const getOrCreateProfileByUserId = async (userId) => {
+  let profile = await getProfileByUserId(userId);
+  if (!profile) {
+    const user = await prisma.users.findUnique({ where: { id: userId } });
+    profile = await prisma.event_management_profiles.create({
+      data: {
+        user_id: userId,
+        company_name: user?.business_name || user?.name || 'Event Management Company'
+      }
+    });
+  }
+  return profile;
+};
+
 const createProfile = async (profileData) => {
   return await prisma.event_management_profiles.create({
     data: profileData,
@@ -77,6 +91,7 @@ const updateEventBusinessHours = async (userId, businessHours) => {
 
 module.exports = {
   getProfileByUserId,
+  getOrCreateProfileByUserId,
   createProfile,
   updateProfile,
   updateEventBusinessHours

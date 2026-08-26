@@ -86,6 +86,7 @@ model cafes {
   gallery                 Json?
   average_rating          Decimal?              @default(0) @db.Decimal(2, 1)
   total_reviews           Int?                  @default(0)
+  category                String?               @db.VarChar(100)
   status                  String?               @default("PENDING") @db.VarChar(20)
   razorpay_account_id         String?               @db.VarChar(100)
   razorpay_linked_account_id  String?               @db.VarChar(100)

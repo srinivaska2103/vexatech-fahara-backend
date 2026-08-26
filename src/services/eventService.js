@@ -2,12 +2,8 @@ const eventServiceRepository = require('../repositories/eventServiceRepository')
 const eventProfileRepository = require('../repositories/eventProfileRepository');
 
 const createEventService = async (userId, serviceData) => {
-  const profile = await eventProfileRepository.getProfileByUserId(userId);
-  if (!profile) {
-    const error = new Error('Event profile not found for this user');
-    error.statusCode = 404;
-    throw error;
-  }
+  // Ensure the user has an event profile provisioned
+  await eventProfileRepository.getOrCreateProfileByUserId(userId);
 
   return await eventServiceRepository.createEventService({
     ...serviceData,
