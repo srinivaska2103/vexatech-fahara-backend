@@ -74,7 +74,6 @@ const createVendorTransfer = async ({ paymentId, vendorType, vendorId, linkedAcc
   // 3. Upsert payment split record in DB
   const now = new Date();
   let splitRecord;
-  const isSettled = transferStatus === 'PROCESSED';
   if (existingSplit) {
     splitRecord = await prisma.payment_splits.update({
       where: { id: existingSplit.id },
@@ -85,10 +84,9 @@ const createVendorTransfer = async ({ paymentId, vendorType, vendorId, linkedAcc
         provider_transfer_id: providerTransferId || existingSplit.provider_transfer_id,
         transfer_status: transferStatus,
         split_amount: Number(amount),
-        settlement_status: isSettled ? 'COMPLETED' : 'PENDING',
+        settlement_status: existingSplit.settlement_status || 'PENDING',
         settlement_id: providerTransferId || existingSplit.settlement_id,
-        processed_at: isSettled ? now : existingSplit.processed_at,
-        settled_at: isSettled ? now : existingSplit.settled_at,
+        processed_at: transferStatus === 'PROCESSED' ? (existingSplit.processed_at || now) : existingSplit.processed_at,
         updated_at: now
       }
     });
@@ -103,10 +101,9 @@ const createVendorTransfer = async ({ paymentId, vendorType, vendorId, linkedAcc
         provider_transfer_id: providerTransferId,
         transfer_status: transferStatus,
         split_amount: Number(amount),
-        settlement_status: isSettled ? 'COMPLETED' : 'PENDING',
+        settlement_status: 'PENDING',
         settlement_id: providerTransferId,
-        processed_at: isSettled ? now : null,
-        settled_at: isSettled ? now : null
+        processed_at: transferStatus === 'PROCESSED' ? now : null
       }
     });
   }
