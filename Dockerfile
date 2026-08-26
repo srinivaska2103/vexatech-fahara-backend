@@ -19,9 +19,14 @@ RUN npx prisma generate
 # Copy source files
 COPY . .
 
+# Make entrypoint executable
+RUN chmod +x /app/docker-entrypoint.sh
+
 EXPOSE 5000
 
 ENV NODE_ENV=production
 ENV PORT=5000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "src/server.js"]
+

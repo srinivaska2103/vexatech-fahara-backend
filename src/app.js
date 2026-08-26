@@ -21,6 +21,17 @@ const errorHandler = require('./middlewares/errorHandler');
 const app = express();
 
 // Middlewares
+// Allow all origins, methods, and headers
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(cors({
   origin: true,
   credentials: true
@@ -68,6 +79,16 @@ app.use('/api/v1/support', require('./routes/supportRoutes'));
 // Basic Route
 app.get('/', (req, res) => {
   res.send('Welcome to Fahara Backend API');
+});
+
+// 404 Route Not Found Handler
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    status: 404,
+    message: `Route ${req.originalUrl} not found`,
+    data: {}
+  });
 });
 
 // Global Error Handler

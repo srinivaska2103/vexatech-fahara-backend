@@ -20,8 +20,22 @@ process.on('uncaughtException', (err) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+const { execSync } = require('child_process');
+
+// Run automatic DB initialization if enabled or missing tables
+if (process.env.AUTO_MIGRATE_DB !== 'false') {
+  try {
+    console.log('[DB Init] Syncing database schema with Prisma...');
+    execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+    console.log('[DB Init] Database schema synced successfully.');
+  } catch (err) {
+    console.error('[DB Init] Error syncing database schema:', err.message);
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   // Start scheduled jobs
   startBookingStatusCron();
 });
+
