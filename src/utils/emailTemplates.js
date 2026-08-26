@@ -1,4 +1,7 @@
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fahara.in';
+const CAFE_FRONTEND_URL = process.env.CAFE_FRONTEND_URL || 'https://cafe.fahara.in';
+const EM_FRONTEND_URL = process.env.EM_FRONTEND_URL || 'https://em.fahara.in';
+const ADMIN_FRONTEND_URL = process.env.ADMIN_FRONTEND_URL || 'https://admin.fahara.in';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
 
 // Professional Vector SVG Icon Generator
@@ -617,8 +620,8 @@ const getSettlementCompletedTemplate = (name, amount, bookingNumber, referenceNu
   const isEventManager = partnerType === 'EVENT_MANAGER';
   const partnerRoleTitle = isEventManager ? 'Event Manager' : 'Cafe Owner';
   const ctaLink = isEventManager 
-    ? `${FRONTEND_URL}/event/revenue/payouts` 
-    : `${FRONTEND_URL}/owner/revenue/payouts`;
+    ? `${EM_FRONTEND_URL}/revenue/payouts` 
+    : `${CAFE_FRONTEND_URL}/owner/revenue/payouts`;
 
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${name},</p>
