@@ -15,17 +15,17 @@ services:
     container_name: fahara_postgres_dev
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: faharadb
+      POSTGRES_USER: FaharaUser
+      POSTGRES_PASSWORD: FaharaSecurePassword
+      POSTGRES_DB: fahara
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - backend_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d faharadb"]
+      test: ["CMD-SHELL", "pg_isready -U FaharaUser -d fahara"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -37,11 +37,11 @@ services:
     container_name: fahara_backend_api
     restart: always
     ports:
-      - "5000:5000"
+      - "5433:5433"
     environment:
       NODE_ENV: production
-      PORT: 5000
-      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/faharadb?schema=public
+      PORT: 5433
+      DATABASE_URL: postgresql://FaharaUser:FaharaSecurePassword@postgres:5432/fahara?schema=public
     networks:
       - backend_net
     depends_on:

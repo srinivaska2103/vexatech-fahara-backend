@@ -3,3 +3,9 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# Database dumps & backup files
+*.dump
+*_backup.json
+export_local_db.js
+restore_production_db.js
