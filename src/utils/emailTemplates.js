@@ -2,7 +2,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fahara.in';
 const CAFE_FRONTEND_URL = process.env.CAFE_FRONTEND_URL || 'https://cafe.fahara.in';
 const EM_FRONTEND_URL = process.env.EM_FRONTEND_URL || 'https://em.fahara.in';
 const ADMIN_FRONTEND_URL = process.env.ADMIN_FRONTEND_URL || 'https://admin.fahara.in';
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://api.fahara.in';
 
 // Professional Vector SVG Icon Generator
 const getVectorIcon = (name) => {
@@ -298,7 +298,7 @@ const getBookingRequestOwnerTemplate = (ownerName, bookingId, customerName, summ
     summaryItems, 
     bookingId: targetId,
     status: 'PENDING',
-    ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`, 
+    ctaLink: `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`, 
     ctaText: 'Manage Booking in Dashboard' 
   });
 };
@@ -338,7 +338,7 @@ const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summary
     summaryItems, 
     bookingId: targetId,
     status: 'PAID',
-    ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`, 
+    ctaLink: `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`, 
     ctaText: 'View Owner Dashboard' 
   });
 };
@@ -378,7 +378,7 @@ const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bo
     summaryItems, 
     bookingId: targetId,
     status: 'CONFIRMED',
-    ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`, 
+    ctaLink: `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`, 
     ctaText: 'View Dashboard' 
   });
 };
@@ -441,8 +441,8 @@ const getPayoutCompletedTemplate = (name, amount, referenceNumber, partnerType =
   ];
 
   const ctaLink = partnerType === 'EVENT_MANAGER' 
-    ? `${FRONTEND_URL}/event/revenue/payouts` 
-    : `${FRONTEND_URL}/owner/revenue/payouts`;
+    ? `${EM_FRONTEND_URL}/revenue/payouts` 
+    : `${CAFE_FRONTEND_URL}/owner/revenue/payouts`;
 
   return generateBaseTemplate({ 
     title: 'Payout Transferred 💸', 
@@ -512,7 +512,7 @@ const getSupportTicketTemplate = (ticketData) => {
     bodyHtml, 
     summaryItems, 
     status: 'PENDING',
-    ctaLink: `${FRONTEND_URL}/admin/support`,
+    ctaLink: `${ADMIN_FRONTEND_URL}/admin/support`,
     ctaText: 'Open Admin Dashboard'
   });
 };
@@ -548,12 +548,14 @@ const getKycStatusTemplate = (name, kycStatus, rejectionReason = null, roleName 
     ...(rejectionReason ? [{ label: 'Rejection Reason', value: rejectionReason }] : [])
   ];
 
+  const ctaUrl = roleName === 'Event Manager' ? `${EM_FRONTEND_URL}/settings` : `${CAFE_FRONTEND_URL}/owner/settings`;
+
   return generateBaseTemplate({ 
     title: statusTitle, 
     bodyHtml, 
     summaryItems, 
     status: badgeStatus,
-    ctaLink: `${FRONTEND_URL}/owner/settings`,
+    ctaLink: ctaUrl,
     ctaText: isApproved ? 'Go to Partner Dashboard' : 'Update Profile Details'
   });
 };
@@ -575,12 +577,14 @@ const getBankVerifiedTemplate = (name, roleName = 'Partner', maskedAccount = 'XX
     { label: 'Settlement Engine', value: 'Razorpay Route' }
   ];
 
+  const ctaUrl = roleName === 'Event Manager' ? `${EM_FRONTEND_URL}/settings` : `${CAFE_FRONTEND_URL}/owner/settings`;
+
   return generateBaseTemplate({ 
     title: 'Bank Verification Successful 🏦', 
     bodyHtml, 
     summaryItems, 
     status: 'PAID',
-    ctaLink: `${FRONTEND_URL}/owner/settings`,
+    ctaLink: ctaUrl,
     ctaText: 'View Payment Account'
   });
 };
@@ -604,13 +608,14 @@ const getEntityRejectedTemplate = (name, entityType = 'Cafe Venue', entityName =
     { label: 'Rejection Reason', value: rejectionReason }
   ];
 
+  const ctaUrl = entityType.toLowerCase().includes('event') ? `${EM_FRONTEND_URL}/settings` : `${CAFE_FRONTEND_URL}/owner/settings`;
+
   return generateBaseTemplate({ 
     title: `${entityType} Review Update ⚠️`, 
     bodyHtml, 
     summaryItems, 
     status: 'CANCELLED',
-    ctaLink: `${FRONTEND_URL}/owner/settings`,
-  ctaLink: `${FRONTEND_URL}/owner/settings`,
+    ctaLink: ctaUrl,
     ctaText: 'Update Submission Details'
   });
 };

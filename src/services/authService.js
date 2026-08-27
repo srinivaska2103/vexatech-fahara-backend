@@ -6,6 +6,54 @@ const otpUtils = require('../utils/otpUtils');
 const jwtUtils = require('../utils/jwtUtils');
 const emailService = require('../utils/emailService');
 
+// In-memory security tracker for failed attempts and blocked IPs
+const failedAttemptsMap = new Map(); // key: ip, value: { count: number, blockedUntil: Date|null }
+const blockedIpsSet = new Set();
+
+const isLoopbackIp = (ip) => {
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost' || ip === 'unknown';
+};
+
+const checkIpSecurity = (clientIp) => {
+  const ip = clientIp || 'unknown';
+  if (isLoopbackIp(ip)) return;
+  
+  if (blockedIpsSet.has(ip)) {
+    const record = failedAttemptsMap.get(ip);
+    if (record && record.blockedUntil && new Date() < record.blockedUntil) {
+      const error = new Error('Your IP has been blocked due to 3 failed login attempts from an unauthorized device.');
+      error.statusCode = 403;
+      throw error;
+    } else {
+      // Expiry passed, unblock
+      blockedIpsSet.delete(ip);
+      failedAttemptsMap.delete(ip);
+    }
+  }
+};
+
+const recordFailedAttempt = (clientIp) => {
+  const ip = clientIp || 'unknown';
+  if (isLoopbackIp(ip)) return;
+  let record = failedAttemptsMap.get(ip) || { count: 0, blockedUntil: null };
+  record.count += 1;
+  if (record.count >= 3) {
+    const blockedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // Block for 24 hours
+    record.blockedUntil = blockedUntil;
+    blockedIpsSet.add(ip);
+    failedAttemptsMap.set(ip, record);
+    console.warn(`[SECURITY ALERT] IP ${ip} has been BLOCKED after 3 failed login attempts.`);
+  } else {
+    failedAttemptsMap.set(ip, record);
+  }
+};
+
+const resetFailedAttempts = (clientIp) => {
+  const ip = clientIp || 'unknown';
+  failedAttemptsMap.delete(ip);
+  blockedIpsSet.delete(ip);
+};
+
 const registerUser = async (userData) => {
   const email = userData.email ? String(userData.email).trim().toLowerCase() : '';
   const { password, name, phone, phoneNumber, roleName } = userData;
@@ -134,10 +182,13 @@ const verifyRegistrationOtp = async (emailInput, otpInput) => {
   };
 };
 
-const login = async (emailInput, password, expectedRole) => {
+const login = async (emailInput, password, expectedRole, clientIp) => {
+  checkIpSecurity(clientIp);
+
   const email = emailInput ? String(emailInput).trim().toLowerCase() : '';
   const user = await userRepository.findUserByEmail(email);
   if (!user) {
+    recordFailedAttempt(clientIp);
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     throw error;
@@ -170,6 +221,12 @@ const login = async (emailInput, password, expectedRole) => {
 
   const targetRole = expectedRole ? String(expectedRole).toUpperCase() : null;
 
+  if (targetRole === 'ADMIN' && roleName !== 'ADMIN') {
+    const error = new Error('Access denied. Admin privileges required.');
+    error.statusCode = 403;
+    throw error;
+  }
+
   if (targetRole === 'CUSTOMER' && isPartnerAccount) {
     const error = new Error('Accounts created as Cafe Owner or Event Manager are not permitted to log in as Customer. Please use the Partner portal.');
     error.statusCode = 403;
@@ -182,11 +239,32 @@ const login = async (emailInput, password, expectedRole) => {
     throw error;
   }
 
+  if (roleName === 'ADMIN' && !password) {
+    return await sendAdminLoginOtp(email, null, clientIp);
+  }
+
   const isMatch = await bcrypt.compare(password, user.password_hash);
   if (!isMatch) {
+    recordFailedAttempt(clientIp);
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
     throw error;
+  }
+
+  // Reset IP attempts on successful password check
+  resetFailedAttempts(clientIp);
+
+  // If Admin user attempts login, enforce 2FA OTP requirement
+  if (roleName === 'ADMIN') {
+    const otp = otpUtils.generateOTP();
+    const expiresAt = otpUtils.getOtpExpiry(5);
+    await otpRepository.createOtp(user.email, otp, expiresAt);
+    await emailService.sendOtpEmail(user.email, otp);
+    return {
+      requireOtp: true,
+      email: user.email,
+      message: 'Admin OTP sent to your email. Please enter OTP to complete login.',
+    };
   }
 
   const payload = { id: user.id, role: user.roles?.name };
@@ -202,6 +280,99 @@ const login = async (emailInput, password, expectedRole) => {
       owner_onboarding_completed: user.owner_onboarding_completed ?? false,
       owner_onboarding_completed_at: user.owner_onboarding_completed_at || null,
     },
+    accessToken,
+    refreshToken,
+  };
+};
+
+const sendAdminLoginOtp = async (emailInput, password, clientIp) => {
+  checkIpSecurity(clientIp);
+
+  const email = emailInput ? String(emailInput).trim().toLowerCase() : '';
+  const user = await userRepository.findUserByEmail(email);
+
+  if (!user || (user.roles?.name || '').toUpperCase() !== 'ADMIN') {
+    recordFailedAttempt(clientIp);
+    const error = new Error('Invalid admin email address or access denied.');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  if (user.status === 'DELETED') {
+    const error = new Error('This account has been deleted.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (user.status === 'SUSPENDED') {
+    const error = new Error('This account has been suspended. Please contact support.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (password) {
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      recordFailedAttempt(clientIp);
+      const error = new Error('Invalid admin credentials.');
+      error.statusCode = 401;
+      throw error;
+    }
+  }
+
+  resetFailedAttempts(clientIp);
+
+  const otp = otpUtils.generateOTP();
+  const expiresAt = otpUtils.getOtpExpiry(5);
+  await otpRepository.createOtp(user.email, otp, expiresAt);
+  await emailService.sendOtpEmail(user.email, otp);
+
+  return {
+    success: true,
+    requireOtp: true,
+    email: user.email,
+    message: 'OTP has been sent to admin email address.',
+  };
+};
+
+const verifyAdminLoginOtp = async (emailInput, otpInput, clientIp) => {
+  checkIpSecurity(clientIp);
+
+  const email = emailInput ? String(emailInput).trim().toLowerCase() : '';
+  const otp = otpInput ? String(otpInput).trim() : '';
+
+  const user = await userRepository.findUserByEmail(email);
+  if (!user || (user.roles?.name || '').toUpperCase() !== 'ADMIN') {
+    recordFailedAttempt(clientIp);
+    const error = new Error('Admin user not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const validOtp = await otpRepository.findValidOtp(email, otp);
+  if (!validOtp) {
+    recordFailedAttempt(clientIp);
+    const error = new Error('Invalid or expired OTP.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await otpRepository.markOtpVerified(validOtp.id);
+  resetFailedAttempts(clientIp);
+
+  const payload = { id: user.id, role: user.roles?.name };
+  const accessToken = jwtUtils.generateAccessToken(payload);
+  const refreshToken = jwtUtils.generateRefreshToken(payload);
+
+  return {
+    message: 'Admin authenticated successfully.',
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.roles?.name,
+    },
+    role: user.roles?.name,
     accessToken,
     refreshToken,
   };
@@ -224,6 +395,12 @@ const forgotPassword = async (emailInput, expectedRole) => {
     (user.event_management_profiles && user.event_management_profiles.length > 0);
 
   const targetRole = expectedRole ? String(expectedRole).toUpperCase() : null;
+
+  if (targetRole === 'ADMIN' && roleName !== 'ADMIN') {
+    const error = new Error('Access denied. Admin privileges required.');
+    error.statusCode = 403;
+    throw error;
+  }
 
   if (targetRole === 'CUSTOMER' && isPartnerAccount) {
     const error = new Error('Accounts created as Cafe Owner or Event Manager cannot request password reset from the Customer portal. Please use the Partner portal.');
@@ -314,6 +491,8 @@ module.exports = {
   registerUser,
   verifyRegistrationOtp,
   login,
+  sendAdminLoginOtp,
+  verifyAdminLoginOtp,
   forgotPassword,
   resetPassword,
   refreshToken,

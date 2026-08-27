@@ -106,6 +106,24 @@ router.post('/login', authController.login);
 
 /**
  * @swagger
+ * /api/v1/auth/admin/send-otp:
+ *   post:
+ *     summary: Send OTP for Admin 2FA Login
+ *     tags: [Auth]
+ */
+router.post('/admin/send-otp', authController.sendAdminOtp);
+
+/**
+ * @swagger
+ * /api/v1/auth/admin/verify-login:
+ *   post:
+ *     summary: Verify OTP and Login Admin
+ *     tags: [Auth]
+ */
+router.post('/admin/verify-login', authController.verifyAdminLogin);
+
+/**
+ * @swagger
  * /api/v1/auth/forgot-password:
  *   post:
  *     summary: Forgot password

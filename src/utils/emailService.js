@@ -3,17 +3,25 @@ const templates = require('./emailTemplates');
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === 'true' || Number(process.env.SMTP_PORT) === 465,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 10000,
 });
 
 const getAdminEmail = () => process.env.ADMIN_EMAIL || 'vexatech.connect@gmail.com';
 
 const sendOtpEmail = async (email, otp) => {
   const customHtml = templates.getOtpTemplate('there', otp);
+
+  console.log(`\n==============================================`);
+  console.log(`🔑 [LOCAL DEV OTP] Email: ${email} | OTP Code: ${otp}`);
+  console.log(`==============================================\n`);
 
   const mailOptions = {
     from: process.env.FROM_EMAIL,
@@ -23,12 +31,14 @@ const sendOtpEmail = async (email, otp) => {
     html: customHtml,
   };
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`[sendOtpEmail] OTP email sent strictly to ${email}`);
-  } catch (error) {
-    console.error('Failed to send OTP email', error);
-  }
+  // Asynchronous non-blocking send
+  transporter.sendMail(mailOptions)
+    .then(() => {
+      console.log(`[sendOtpEmail] OTP email sent strictly to ${email}`);
+    })
+    .catch((error) => {
+      console.error('[sendOtpEmail] Failed to send OTP email via SMTP:', error?.message || error);
+    });
 };
 
 const sendEmail = async (to, subject, text, html, skipBcc = false) => {
@@ -44,12 +54,14 @@ const sendEmail = async (to, subject, text, html, skipBcc = false) => {
     html,
   };
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`[sendEmail] Sent email to: ${to}${shouldBccAdmin ? ` | Admin Copy: ${adminEmail}` : ''}`);
-  } catch (error) {
-    console.error('Failed to send generic email', error);
-  }
+  // Asynchronous non-blocking send
+  transporter.sendMail(mailOptions)
+    .then(() => {
+      console.log(`[sendEmail] Sent email to: ${to}${shouldBccAdmin ? ` | Admin Copy: ${adminEmail}` : ''}`);
+    })
+    .catch((error) => {
+      console.error('[sendEmail] Failed to send generic email:', error?.message || error);
+    });
 };
 
 // Wrapper functions for easy integration

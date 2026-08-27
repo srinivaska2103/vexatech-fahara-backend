@@ -24,7 +24,30 @@ const login = async (req, res, next) => {
     const { email, password, expectedRole, roleName } = req.body;
     const clientHeader = req.headers['x-app-client'] || req.headers['x-client-type'];
     const targetRole = expectedRole || roleName || (clientHeader === 'customer' ? 'CUSTOMER' : null);
-    const result = await authService.login(email, password, targetRole);
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const result = await authService.login(email, password, targetRole, clientIp);
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const sendAdminOtp = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const result = await authService.sendAdminLoginOtp(email, password, clientIp);
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifyAdminLogin = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const result = await authService.verifyAdminLoginOtp(email, otp, clientIp);
     res.status(200).json({ success: true, ...result });
   } catch (error) {
     next(error);
@@ -67,6 +90,8 @@ module.exports = {
   register,
   verifyOtp,
   login,
+  sendAdminOtp,
+  verifyAdminLogin,
   forgotPassword,
   resetPassword,
   refreshToken,
