@@ -212,7 +212,23 @@ const executePaymentSplits = async (paymentId) => {
  */
 const checkVendorSettlements = async () => {
   try {
-    console.log('[SettlementCron] Running vendor settlement verification with Razorpay (every 3h)...');
+    console.log('[SettlementCron] Running vendor settlement verification with Razorpay...');
+
+    // 0. Ensure all SUCCESS payments have split records generated
+    const successfulPaymentsWithoutSplits = await prisma.payments.findMany({
+      where: {
+        status: 'SUCCESS',
+        payment_splits: { none: {} }
+      },
+      select: { id: true }
+    });
+    for (const p of successfulPaymentsWithoutSplits) {
+      try {
+        await executePaymentSplits(p.id);
+      } catch (err) {
+        console.error(`[SettlementCron] Error generating splits for payment ${p.id}:`, err.message);
+      }
+    }
 
     // 1. Fetch pending split records for CAFE and EVENT_MANAGER vendors
     const pendingSplits = await prisma.payment_splits.findMany({
@@ -236,7 +252,7 @@ const checkVendorSettlements = async () => {
 
     if (pendingSplits.length === 0) {
       console.log('[SettlementCron] No pending vendor settlements found.');
-      return { updatedCount: 0 };
+      return { updatedCount: 0, totalChecked: 0 };
     }
 
     console.log(`[SettlementCron] Found ${pendingSplits.length} pending split record(s) to verify.`);

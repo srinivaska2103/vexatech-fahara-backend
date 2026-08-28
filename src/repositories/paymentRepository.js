@@ -162,6 +162,7 @@ const getAllAdminTransactions = async (query = {}) => {
           discount: true,
           gst: true,
           fahara_service_charge: true,
+          transaction_fee: true,
           total: true,
           booking_date: true,
           booking_status: true,

@@ -1,9 +1,9 @@
 {
   "body": {
-    "company_name": "Test Company",
-    "company_logo": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1787248739/fahara_uploads/hnh6ahw82aktpdk959ql.avif",
+    "company_name": "Test Event ",
+    "company_logo": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1787893362/fahara_uploads/zwvus6jgpamdymhxxiky.avif",
     "company_banner": "",
-    "description": "Test Description ",
+    "description": "Company Description",
     "working_hours": [
       {
         "dayOfWeek": "MONDAY",
@@ -38,7 +38,7 @@
       {
         "dayOfWeek": "SATURDAY",
         "openTime": "10:00",
-        "closeTime": "21:00",
+        "closeTime": "16:00",
         "isClosed": false
       },
       {
@@ -49,11 +49,11 @@
       }
     ],
     "business_registration_number": "",
-    "established_year": 2025,
-    "experience_years": 1,
-    "business_email": "srinivaska2103@gmail.com",
-    "business_phone": "8946029204",
-    "alternate_phone": "8946029203",
+    "established_year": null,
+    "experience_years": 0,
+    "business_email": "infotrixsolutions82@gmail.com",
+    "business_phone": "8946029207",
+    "alternate_phone": "",
     "website_url": "",
     "instagram_url": "",
     "facebook_url": "",
@@ -62,7 +62,7 @@
     "address_line1": "Test Address",
     "address_line2": "",
     "city": "Madurai",
-    "state": "Tamil Nadu",
+    "state": "Tamil Nadu ",
     "country": "India",
     "postal_code": "625022",
     "service_radius_km": 25

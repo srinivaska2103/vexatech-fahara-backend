@@ -64,6 +64,8 @@ router.get('/owner/invoices', protect, paymentController.getOwnerInvoices);
 router.get('/owner/refunds', protect, paymentController.getOwnerRefunds);
 router.get('/owner/payouts', protect, paymentController.getOwnerPayouts);
 router.get('/owner/settlements', protect, paymentController.getOwnerSettlements);
+router.post('/owner/settlements/sync', protect, paymentController.syncOwnerSettlements);
+router.get('/owner/settlements/sync', protect, paymentController.syncOwnerSettlements);
 router.get('/owner/settlements/:id', protect, paymentController.getOwnerSettlementById);
 router.get('/owner/revenue/summary', protect, paymentController.getOwnerRevenueSummary);
 router.post('/owner/reports/export', protect, paymentController.exportOwnerReport);

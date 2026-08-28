@@ -33,6 +33,7 @@ async function main() {
       total: b.total,
       subtotal: b.subtotal,
       fahara_service_charge: b.fahara_service_charge,
+      transaction_fee: b.transaction_fee,
       cafe_amount: b.cafe_amount,
       event_service_amount: b.event_service_amount,
       booking_status: b.booking_status,

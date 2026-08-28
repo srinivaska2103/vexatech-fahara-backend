@@ -131,7 +131,13 @@ const registerUser = async (userData) => {
   await otpRepository.createOtp(email, otp, expiresAt);
   await emailService.sendOtpEmail(email, otp);
 
-  return { message: 'OTP sent to email. Please verify.' };
+  return { 
+    message: 'OTP sent to email. Please verify.',
+    user: {
+      id: existingUser.id,
+      email: existingUser.email
+    }
+  };
 };
 
 const verifyRegistrationOtp = async (emailInput, otpInput) => {

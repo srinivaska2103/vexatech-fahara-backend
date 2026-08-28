@@ -1,4 +1,16 @@
-Error: Invalid admin email address or access denied.
-    at Object.sendAdminLoginOtp (D:\Srinivas\vexatech-fahara-backend\src\services\authService.js:296:19)
+PrismaClientKnownRequestError: 
+Invalid `prisma.payment_refunds.findUnique()` invocation in
+D:\Srinivas\vexatech-fahara-backend\src\services\paymentService.js:1793:47
+
+  1790 const prisma = require('../config/prisma');
+  1791 const razorpayRouteService = require('./razorpayRouteService');
+  1792 
+→ 1793 let dbRefund = await prisma.payment_refunds.findUnique(
+Invalid input value: invalid input syntax for type uuid: "REF_8688A0B4"
+    at zr.handleRequestError (D:\Srinivas\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:8286)
+    at zr.handleAndLogRequestError (D:\Srinivas\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
+    at zr.request (D:\Srinivas\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async sendAdminOtp (D:\Srinivas\vexatech-fahara-backend\src\controllers\authController.js:39:20)
+    at async a (D:\Srinivas\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
+    at async Object.syncCashfreeRefundStatus (D:\Srinivas\vexatech-fahara-backend\src\services\paymentService.js:1793:18)
+    at async syncCashfreeRefundStatus (D:\Srinivas\vexatech-fahara-backend\src\controllers\paymentController.js:386:18)

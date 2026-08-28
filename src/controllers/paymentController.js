@@ -189,6 +189,19 @@ const getOwnerSettlements = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+const syncOwnerSettlements = async (req, res, next) => {
+  try {
+    const { checkVendorSettlements } = require('../services/transferService');
+    const syncResult = await checkVendorSettlements();
+    const data = await paymentService.getOwnerSettlements(req.user.id, req.query);
+    res.status(200).json({
+      success: true,
+      message: `Razorpay settlements synced successfully. ${syncResult.updatedCount || 0} settlement(s) updated.`,
+      ...data
+    });
+  } catch (error) { next(error); }
+};
+
 const getOwnerSettlementById = async (req, res, next) => {
   try {
     const data = await paymentService.getOwnerSettlementById(req.user.id, req.params.id);
@@ -568,6 +581,7 @@ module.exports = {
   getOwnerRefunds,
   getOwnerPayouts,
   getOwnerSettlements,
+  syncOwnerSettlements,
   getOwnerSettlementById,
   getOwnerRevenueSummary,
   exportOwnerReport,

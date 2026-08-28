@@ -235,8 +235,13 @@ const updateOnboardingStatus = async (userId, completed) => {
 };
 
 const updateProfile = async (userId, profileData) => {
-  const { name, phone, dob, gender, bio } = profileData;
+  const { name, phone, dob, gender, bio, profile_image, profileImage, avatar } = profileData;
   const updatePayload = {};
+
+  const imageVal = profile_image || profileImage || avatar;
+  if (imageVal !== undefined) {
+    updatePayload.profile_image = imageVal && String(imageVal).trim() ? String(imageVal).trim() : null;
+  }
 
   if (name !== undefined && name !== null) {
     updatePayload.name = String(name).trim();

@@ -34,22 +34,17 @@ const initiateRefund = async ({ bookingId, paymentId, refundAmount, reason, init
     throw err;
   }
 
-  // 9-hour Cancellation & Refund Policy Enforcement
+  // Cancellation & Refund Policy Enforcement:
+  // Customers can cancel and get a refund ONLY within 3 hours from the time of booking creation.
   if (payment.bookings && (initiatedBy === 'CUSTOMER' || initiatedBy === 'USER')) {
     const booking = payment.bookings;
-    const bDate = new Date(booking.booking_date);
-    
-    let bookingStartDateTime = new Date(bDate);
-    if (booking.start_time) {
-      const sTime = new Date(booking.start_time);
-      bookingStartDateTime.setHours(sTime.getHours() || sTime.getUTCHours(), sTime.getMinutes() || sTime.getUTCMinutes(), 0, 0);
-    }
-
     const now = new Date();
-    const hoursDiff = (bookingStartDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (hoursDiff < 9) {
-      const err = new Error('Refund policy error: Cancellations must be made at least 9 hours before the scheduled booking time to be eligible for a refund.');
+    const bookingCreatedAt = new Date(booking.created_at || payment.created_at || payment.paid_at || now);
+    const hoursSinceBookingCreated = (now.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
+
+    if (hoursSinceBookingCreated > 3) {
+      const err = new Error('Refund policy error: Cancellations and refunds are allowed only within 3 hours from the time of booking creation.');
       err.statusCode = 400;
       throw err;
     }

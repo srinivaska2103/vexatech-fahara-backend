@@ -17,6 +17,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const financeRoutes = require('./routes/financeRoutes');
+const favoriteRoutes = require('./routes/favoriteRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 const app = express();
 
@@ -28,9 +29,19 @@ app.use(cors({
 app.use(express.json({
   limit: '50mb',
   verify: (req, res, buf) => {
-    req.rawBody = buf.toString();
+    try {
+      if (buf && buf.length) {
+        req.rawBody = buf.toString();
+      }
+    } catch (e) {}
   }
 }));
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, message: 'Invalid JSON payload format' });
+  }
+  next(err);
+});
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static('public'));
 
@@ -63,6 +74,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/activities', require('./routes/activityRoutes'));
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/favorites', favoriteRoutes);
 app.use('/api/v1/support', require('./routes/supportRoutes'));
 
 // Basic Route

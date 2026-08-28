@@ -349,33 +349,23 @@ const cancelBooking = async (id, userId, userRole) => {
     throw error;
   }
 
+  // Customer cancellation rule: allowed ONLY within 3 hours from the time of booking creation
+  if (isCustomer && !isAdmin && !isCafeOwner && !isEventManager) {
+    const now = new Date();
+    const bookingCreatedAt = new Date(booking.created_at || now);
+    const hoursSinceBookingCreated = (now.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
+
+    if (hoursSinceBookingCreated > 3) {
+      const error = new Error('Cancellations are allowed only within 3 hours from the time of booking creation.');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   // Process refund if paid
   if (booking.payment_status === 'PAID') {
-    if (isAdmin || isCafeOwner || isEventManager) {
-      // Partner or Admin cancellation: always refund
-      await paymentService.processRefund(id);
-      await bookingRepository.updateBookingPaymentStatus(id, 'REFUNDED');
-    } else {
-      // Customer cancellation: check 9-hour window
-      const bDate = new Date(booking.booking_date);
-      let bookingStartDateTime = new Date(bDate);
-      if (booking.start_time) {
-        const sTime = new Date(booking.start_time);
-        bookingStartDateTime.setHours(sTime.getHours() || sTime.getUTCHours(), sTime.getMinutes() || sTime.getUTCMinutes(), 0, 0);
-      }
-
-      const now = new Date();
-      const hoursDiff = (bookingStartDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-      if (hoursDiff >= 9) {
-        // Eligible for automated refund
-        await paymentService.processRefund(id);
-        await bookingRepository.updateBookingPaymentStatus(id, 'REFUNDED');
-      } else {
-        // Cancellation within 9 hours: non-refundable
-        console.log(`Booking #${id} cancelled within 9 hours (${hoursDiff.toFixed(1)}h left). Refund non-eligible.`);
-      }
-    }
+    await paymentService.processRefund(id);
+    await bookingRepository.updateBookingPaymentStatus(id, 'REFUNDED');
   }
 
   const updatedBooking = await bookingRepository.updateBookingStatus(id, 'CANCELLED');

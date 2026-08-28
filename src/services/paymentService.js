@@ -1059,7 +1059,7 @@ const getOwnerPaymentById = async (ownerId, paymentId) => {
 
 const syncCashfreePayoutStatus = async (paymentId) => {
   const prisma = require('../config/prisma');
-  const [rawId] = (paymentId || '').split(':');
+  const [rawId, partnerTypeFilter] = (paymentId || '').split(':');
 
   if (!rawId) {
     const err = new Error('Invalid payout ID');
@@ -1078,59 +1078,38 @@ const syncCashfreePayoutStatus = async (paymentId) => {
     throw err;
   }
 
-  let updatedStatus = payment.payout_status || 'PENDING';
-  let isSettled = updatedStatus === 'COMPLETED';
+  const targetVendorType = partnerTypeFilter === 'EVENT_MANAGER' ? 'EVENT_MANAGER' : 'CAFE';
 
-  if (payment.gateway_order_id && Cashfree) {
-    try {
-      let cfPayments = null;
-      let cfSettlement = null;
-
-      try {
-        if (typeof Cashfree.PGOrderFetchPayments === 'function') {
-          const res = await Cashfree.PGOrderFetchPayments(payment.gateway_order_id);
-          cfPayments = res.data || res;
-        }
-      } catch (err) {
-        console.warn('Cashfree fetch payments warning:', err.message);
-      }
-
-      try {
-        if (typeof Cashfree.PGOrderFetchSettlement === 'function') {
-          const res = await Cashfree.PGOrderFetchSettlement(payment.gateway_order_id);
-          cfSettlement = res.data || res;
-        }
-      } catch (err) {
-        console.warn('Cashfree fetch settlement warning:', err.message);
-      }
-
-      const hasSuccessPayment = Array.isArray(cfPayments) && cfPayments.some(p => p.payment_status === 'SUCCESS');
-      const settlementStatus = cfSettlement?.settlement_status || cfSettlement?.status;
-
-      if (settlementStatus === 'SETTLED' || settlementStatus === 'SUCCESS') {
-        updatedStatus = 'COMPLETED';
-        isSettled = true;
-      } else if (hasSuccessPayment) {
-        const paidAt = new Date(payment.paid_at || payment.created_at);
-        const autoSettledDate = new Date(paidAt);
-        autoSettledDate.setDate(autoSettledDate.getDate() + 1);
-
-        if (new Date() >= autoSettledDate || payment.payout_status === 'COMPLETED') {
-          updatedStatus = 'COMPLETED';
-          isSettled = true;
-        } else {
-          updatedStatus = 'PROCESSING';
-        }
-      } else if (payment.status === 'FAILED' || payment.status === 'CANCELLED') {
-        updatedStatus = 'FAILED';
-      }
-    } catch (cfErr) {
-      console.error('Cashfree status sync error:', cfErr.message);
+  // Check split record status in DB for this vendor
+  const targetSplit = await prisma.payment_splits.findFirst({
+    where: {
+      payment_id: rawId,
+      vendor_type: targetVendorType
     }
-  } else {
-    if (payment.status === 'SUCCESS' || payment.status === 'PAID') {
+  });
+
+  let updatedStatus = 'PENDING';
+  let isSettled = false;
+
+  if (targetSplit) {
+    if (targetSplit.settlement_status === 'COMPLETED' || targetSplit.transfer_status === 'PROCESSED') {
       updatedStatus = 'COMPLETED';
       isSettled = true;
+    } else if (targetSplit.transfer_status === 'FAILED') {
+      updatedStatus = 'FAILED';
+    } else {
+      updatedStatus = 'PROCESSING';
+    }
+  } else {
+    // If no split record, fall back to checking if payment is older than 7 days
+    const paymentDate = new Date(payment.paid_at || payment.created_at);
+    const payoutDate = new Date(paymentDate);
+    payoutDate.setDate(payoutDate.getDate() + 7);
+    if (new Date() >= payoutDate && payment.status === 'SUCCESS') {
+      updatedStatus = 'COMPLETED';
+      isSettled = true;
+    } else {
+      updatedStatus = 'PROCESSING';
     }
   }
 
@@ -1164,19 +1143,22 @@ const getAdminPayouts = async (query) => {
                        (p.booking_id && refundedBookingIds.has(p.booking_id));
     return !isRefunded;
   });
+  const paymentIds = successfulPayments.map(p => p.id);
+  const splitsList = await prisma.payment_splits.findMany({
+    where: { payment_id: { in: paymentIds } }
+  });
+
+  const splitsMap = new Map();
+  for (const s of splitsList) {
+    splitsMap.set(`${s.payment_id}:${s.vendor_type}`, s);
+  }
+
   const mapped = [];
 
   for (const p of successfulPayments) {
     const paymentDate = new Date(p.paid_at || Date.now());
     const payoutDate = new Date(paymentDate);
     payoutDate.setDate(payoutDate.getDate() + 7);
-
-    const now = new Date();
-    let status = p.payout_status;
-
-    if (!status || status === 'PENDING' || status === 'PROCESSING') {
-      status = payoutDate <= now ? 'COMPLETED' : 'PROCESSING';
-    }
 
     const b = p.bookings;
     const eventAmount = Number(b?.event_service_amount || 0);
@@ -1186,7 +1168,21 @@ const getAdminPayouts = async (query) => {
     const hasCafeOwner = !!(b?.cafes?.users) && cafeAmount > 0;
     const hasEventManager = !!(b?.event_service_id && b?.event_services?.users) && eventAmount > 0;
 
+    const getSplitStatus = (vendorType) => {
+      const split = splitsMap.get(`${p.id}:${vendorType}`);
+      if (split) {
+        if (split.settlement_status === 'COMPLETED' || split.transfer_status === 'PROCESSED') return 'COMPLETED';
+        if (split.transfer_status === 'FAILED') return 'FAILED';
+        if (split.transfer_status === 'PENDING' || split.settlement_status === 'PENDING') return 'PENDING';
+        return 'PROCESSING';
+      }
+      return p.payout_status || 'PENDING';
+    };
+
     if (hasCafeOwner && hasEventManager) {
+      const cafeStatus = getSplitStatus('CAFE');
+      const eventStatus = getSplitStatus('EVENT_MANAGER');
+
       // Cafe Owner Payout
       mapped.push({
         id: `${p.id}:CAFE_OWNER`,
@@ -1198,9 +1194,9 @@ const getAdminPayouts = async (query) => {
         fahara_fee: 0,
         payable_amount: cafeAmount,
         amount: cafeAmount,
-        status: status,
-        payout_status: status,
-        payout_completed_at: p.payout_completed_at || null,
+        status: cafeStatus,
+        payout_status: cafeStatus,
+        payout_completed_at: cafeStatus === 'COMPLETED' ? (p.payout_completed_at || new Date()) : null,
         reference_number: `REF-C-${p.id.substring(0,6).toUpperCase()}`,
         partner_type: 'CAFE_OWNER',
         partner_name: b.cafes.users.name || 'Cafe Owner',
@@ -1219,9 +1215,9 @@ const getAdminPayouts = async (query) => {
         fahara_fee: 0,
         payable_amount: eventAmount,
         amount: eventAmount,
-        status: status,
-        payout_status: status,
-        payout_completed_at: p.payout_completed_at || null,
+        status: eventStatus,
+        payout_status: eventStatus,
+        payout_completed_at: eventStatus === 'COMPLETED' ? (p.payout_completed_at || new Date()) : null,
         reference_number: `REF-E-${p.id.substring(0,6).toUpperCase()}`,
         partner_type: 'EVENT_MANAGER',
         partner_name: b.event_services.users.name || 'Event Manager',
@@ -1239,6 +1235,8 @@ const getAdminPayouts = async (query) => {
         grossAmount = eventAmount > 0 ? eventAmount : totalSubtotal;
       }
 
+      const singleStatus = getSplitStatus(partnerType === 'EVENT_MANAGER' ? 'EVENT_MANAGER' : 'CAFE');
+
       mapped.push({
         id: p.id,
         payment_id: p.id,
@@ -1249,9 +1247,9 @@ const getAdminPayouts = async (query) => {
         fahara_fee: 0,
         payable_amount: grossAmount,
         amount: grossAmount,
-        status: status,
-        payout_status: status,
-        payout_completed_at: p.payout_completed_at || null,
+        status: singleStatus,
+        payout_status: singleStatus,
+        payout_completed_at: singleStatus === 'COMPLETED' ? (p.payout_completed_at || new Date()) : null,
         reference_number: `REF-${p.id.substring(0,8).toUpperCase()}`,
         partner_type: partnerType,
         partner_name: partnerUser?.name || 'Unknown Partner',
@@ -1278,15 +1276,28 @@ const getAdminPayoutById = async (paymentId) => {
     return { data: null };
   }
 
+  let partnerType = partnerTypeFilter || 'CAFE_OWNER';
+  const targetVendorType = partnerType === 'EVENT_MANAGER' ? 'EVENT_MANAGER' : 'CAFE';
+
+  const targetSplit = await prisma.payment_splits.findFirst({
+    where: { payment_id: rawId, vendor_type: targetVendorType }
+  });
+
+  let status = 'PENDING';
+  if (targetSplit) {
+    if (targetSplit.settlement_status === 'COMPLETED' || targetSplit.transfer_status === 'PROCESSED') status = 'COMPLETED';
+    else if (targetSplit.transfer_status === 'FAILED') status = 'FAILED';
+    else if (targetSplit.transfer_status === 'PENDING' || targetSplit.settlement_status === 'PENDING') status = 'PENDING';
+    else status = 'PROCESSING';
+  } else {
+    status = p.payout_status || 'PENDING';
+  }
+
   const paymentDate = new Date(p.paid_at || Date.now());
   const payoutDate = new Date(paymentDate);
   payoutDate.setDate(payoutDate.getDate() + 7);
 
-  const now = new Date();
-  const status = p.payout_status || (payoutDate <= now ? 'COMPLETED' : 'PROCESSING');
-
   const b = p.bookings;
-  let partnerType = partnerTypeFilter || 'CAFE_OWNER';
   let partnerUser = b?.cafes?.users;
   let grossAmount = Number(b?.subtotal || p.amount || 0);
 
@@ -1451,6 +1462,7 @@ const getAdminRevenueSummary = async (query) => {
   let grossBookingValue = 0;
   let faharaPlatformRevenue = 0;
   let gstTax = 0;
+  let transactionFeeTotal = 0;
   let discounts = 0;
   let refunds = 0;
   let cafePayable = 0;
@@ -1481,33 +1493,38 @@ const getAdminRevenueSummary = async (query) => {
 
     // Direct Database Fields
     const gv = Number(b.total || p.amount || 0);
-    const platformRev = Number(b.fahara_service_charge || p.platform_fee || (Number(b.subtotal || 0) * 0.04));
-    const tax = Number(b.gst || 0);
+    const subtotalVal = Number(b.subtotal || 0);
+    const platformRev = Number(b.fahara_service_charge || p.platform_fee || (subtotalVal * 0.04));
+    const tax = Number(b.gst ?? p.gst_amount ?? 0);
+    const rawTxnFee = Number(b.transaction_fee || 0);
+    const computedTxnFee = rawTxnFee > 0 ? rawTxnFee : (gv > 0 && gv > (subtotalVal + platformRev + tax) ? (gv - subtotalVal - platformRev - tax) : 0);
+    const txnFee = Number(computedTxnFee.toFixed(2));
     const disc = Number(b.discount || 0);
 
     grossBookingValue += gv;
     faharaPlatformRevenue += platformRev;
     gstTax += tax;
+    transactionFeeTotal += txnFee;
     discounts += disc;
 
-    // Calculate Partner Payables (Gross - Platform Rev - Tax)
-    // Wait, if Platform Rev and Tax are deducted from the Gross, we can compute Payable:
-    const netPayable = gv - platformRev - tax;
+    // Direct vendor package and add-on amounts (strictly excludes GST and platform/transaction fees)
+    let cafeAmt = Number(b.cafe_amount || 0) + Number(b.food_amount || 0) + Number(b.decoration_amount || 0) + Number(b.extra_person_amount || 0);
+    let eventAmt = Number(b.event_service_amount || 0);
 
-    const cafeAmt = Number(b.cafe_amount || 0) + Number(b.food_amount || 0) + Number(b.decoration_amount || 0) + Number(b.extra_person_amount || 0);
-    const eventAmt = Number(b.event_service_amount || 0);
-    const totalAmt = cafeAmt + eventAmt;
-
-    if (b.event_service_id != null && totalAmt > 0) {
-      // Mixed booking: split netPayable proportionally between cafe and event manager
-      const cafeShare = netPayable * (cafeAmt / totalAmt);
-      const eventShare = netPayable * (eventAmt / totalAmt);
-      cafePayable += cafeShare;
-      eventManagerPayable += eventShare;
-    } else {
-      // Cafe-only booking: full net amount goes to cafe
-      cafePayable += netPayable;
+    // Fallback for legacy bookings where subtotal wasn't broken down into cafe/event fields
+    if (cafeAmt === 0 && eventAmt === 0 && Number(b.subtotal || 0) > 0) {
+      if (b.event_service_id != null) {
+        cafeAmt = Number(b.subtotal) / 2;
+        eventAmt = Number(b.subtotal) / 2;
+      } else {
+        cafeAmt = Number(b.subtotal);
+      }
     }
+
+    cafePayable += cafeAmt;
+    eventManagerPayable += eventAmt;
+
+    const netPayable = cafeAmt + eventAmt;
 
     const date = new Date(p.paid_at || b.booking_date || new Date());
     
@@ -1548,6 +1565,10 @@ const getAdminRevenueSummary = async (query) => {
       fahara_revenue: formatDec(faharaPlatformRevenue),
       faharaRevenue: formatDec(faharaPlatformRevenue),
       gst_tax: formatDec(gstTax),
+      gst_amount: formatDec(gstTax),
+      gstAmount: formatDec(gstTax),
+      transaction_fee: formatDec(transactionFeeTotal),
+      transactionFee: formatDec(transactionFeeTotal),
       discounts: formatDec(discounts),
       refunds: formatDec(refunds),
       cafe_payable: formatDec(cafePayable),
@@ -1728,96 +1749,135 @@ const getAdminPaymentDetails = async (id) => {
 };
 
 const getAdminRefunds = async (query) => {
-  const transactions = await paymentRepository.getAllAdminTransactions(query);
-  const refunds = transactions.filter(t => t.status === 'REFUNDED' || t.status === 'REFUND_PENDING');
+  const dbRefunds = await prisma.payment_refunds.findMany({
+    include: {
+      payments: {
+        include: {
+          bookings: {
+            include: {
+              users: true,
+              cafes: true,
+              event_services: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: { created_at: 'desc' }
+  });
 
-  const mapped = refunds.map(p => ({
-    id: `REF_${p.id.substring(0, 8).toUpperCase()}`,
-    payment_id: p.id,
-    booking: p.bookings?.booking_number || 'N/A',
-    customer: p.bookings?.users?.name || 'Guest',
-    amount: Number(p.amount || p.bookings?.total || 0),
-    reason: 'Customer requested cancellation',
-    status: p.status === 'REFUNDED' ? 'Completed' : 'Processing',
-    requested_date: p.bookings?.updated_at || p.paid_at || new Date().toISOString(),
-    processed_date: p.status === 'REFUNDED' ? (p.updated_at || new Date().toISOString()) : null
-  }));
+  const mapped = dbRefunds.map(r => {
+    const b = r.payments?.bookings;
+    const isCompleted = r.refund_status === 'SUCCESS' || r.refund_status === 'COMPLETED' || r.payments?.status === 'REFUNDED';
+    return {
+      id: r.id,
+      payment_id: r.payment_id,
+      booking: b?.booking_number || 'N/A',
+      customer: b?.users?.name || 'Guest',
+      customer_email: b?.users?.email || 'N/A',
+      amount: Number(r.refund_amount || 0),
+      reason: r.reason || 'Booking cancellation refund',
+      status: isCompleted ? 'Completed' : 'Processing',
+      requested_date: r.created_at || new Date().toISOString(),
+      processed_date: isCompleted ? (r.updated_at || r.created_at) : null
+    };
+  });
 
   return { data: mapped };
 };
 
-const syncCashfreeRefundStatus = async (paymentId) => {
-  let targetId = paymentId;
-  if (typeof paymentId === 'string' && paymentId.startsWith('REF_')) {
-    const rawId = paymentId.replace('REF_', '');
-    const prisma = require('../config/prisma');
-    const found = await prisma.payments.findFirst({
-      where: {
-        id: { contains: rawId, mode: 'insensitive' }
-      }
-    });
-    if (found) targetId = found.id;
-  }
+const syncCashfreeRefundStatus = async (refundId) => {
+  const prisma = require('../config/prisma');
+  const razorpayRouteService = require('./razorpayRouteService');
 
-  const payment = await paymentRepository.getAdminPaymentById(targetId);
-  if (!payment) {
-    const err = new Error('Refund payment record not found');
+  let dbRefund = await prisma.payment_refunds.findFirst({
+    where: {
+      OR: [
+        { id: String(refundId) },
+        { payment_id: String(refundId) },
+        { razorpay_refund_id: String(refundId) },
+        { provider_refund_id: String(refundId) }
+      ]
+    },
+    include: { payments: true }
+  });
+
+  if (!dbRefund) {
+    const err = new Error('Refund record not found');
     err.statusCode = 404;
     throw err;
   }
 
-  let updatedStatus = payment.status;
+  let updatedStatus = dbRefund.refund_status;
+  const rzpRefundId = dbRefund.razorpay_refund_id || dbRefund.provider_refund_id;
 
-  if (payment.gateway_order_id && Cashfree && typeof Cashfree.PGOrderFetchRefunds === 'function') {
+  if (rzpRefundId && rzpRefundId.startsWith('rfnd_')) {
     try {
-      const res = await Cashfree.PGOrderFetchRefunds(payment.gateway_order_id);
-      const refunds = res.data || res;
-      if (Array.isArray(refunds)) {
-        const successRefund = refunds.find(r => r.refund_status === 'SUCCESS');
-        const failedRefund = refunds.find(r => r.refund_status === 'FAILED');
-        if (successRefund) {
-          updatedStatus = 'REFUNDED';
-        } else if (failedRefund) {
-          updatedStatus = 'FAILED';
+      const razorpay = require('../config/razorpay').getRazorpayInstance();
+      if (razorpay && typeof razorpay.refunds?.fetch === 'function') {
+        const fetchedRzpRefund = await razorpay.refunds.fetch(rzpRefundId);
+        if (fetchedRzpRefund && fetchedRzpRefund.status === 'processed') {
+          updatedStatus = 'SUCCESS';
         }
       }
-    } catch (cfErr) {
-      console.warn('Cashfree refund status sync warning:', cfErr.message);
+    } catch (e) {
+      console.warn('[Razorpay Refund Sync Warning]:', e.message);
     }
   }
 
-  if (updatedStatus !== payment.status) {
-    await paymentRepository.updatePaymentStatus(payment.id, updatedStatus);
+  if (updatedStatus !== dbRefund.refund_status) {
+    await prisma.payment_refunds.update({
+      where: { id: dbRefund.id },
+      data: { refund_status: updatedStatus, updated_at: new Date() }
+    });
   }
 
-  return getAdminRefundDetails(payment.id);
+  return getAdminRefundDetails(dbRefund.id);
 };
 
 const getAdminRefundDetails = async (id) => {
-  // Extract payment id from REF_XXX format if needed or just use id
-  // For simplicity, we just search for all transactions and filter
-  let pId = id;
-  if (id.startsWith('REF_')) {
-    // Just find the transaction that matches the substring, or pass the actual payment id from frontend
-  }
+  const prisma = require('../config/prisma');
+  const r = await prisma.payment_refunds.findFirst({
+    where: {
+      OR: [
+        { id: String(id) },
+        { payment_id: String(id) },
+        { razorpay_refund_id: String(id) }
+      ]
+    },
+    include: {
+      payments: {
+        include: {
+          bookings: {
+            include: {
+              users: true,
+              cafes: true,
+              event_services: true
+            }
+          }
+        }
+      }
+    }
+  });
 
-  const p = await paymentRepository.getAdminPaymentById(id); // assuming frontend sends actual payment id
-  if (!p) return { data: null };
+  if (!r) return { data: null };
+
+  const b = r.payments?.bookings;
+  const isCompleted = r.refund_status === 'SUCCESS' || r.refund_status === 'COMPLETED' || r.payments?.status === 'REFUNDED';
 
   return {
     data: {
-      id: `REF_${p.id.substring(0, 8).toUpperCase()}`,
-      payment_id: p.id,
-      booking: p.bookings?.booking_number || 'N/A',
-      customer: p.bookings?.users?.name || 'Guest',
-      customer_email: p.bookings?.users?.email || 'N/A',
-      customer_phone: p.bookings?.users?.phone || 'N/A',
-      amount: Number(p.amount || p.bookings?.total || 0),
-      reason: 'Customer requested cancellation',
-      status: p.status === 'REFUNDED' ? 'Completed' : 'Processing',
-      requested_date: p.bookings?.updated_at || p.paid_at || new Date().toISOString(),
-      processed_date: p.status === 'REFUNDED' ? (p.updated_at || new Date().toISOString()) : null,
-      gateway_refund_id: `GW_REF_${p.id.substring(0, 6)}`
+      id: r.id,
+      payment_id: r.payment_id,
+      booking: b?.booking_number || 'N/A',
+      customer: b?.users?.name || 'Guest',
+      customer_email: b?.users?.email || 'N/A',
+      customer_phone: b?.users?.phone || 'N/A',
+      amount: Number(r.refund_amount || 0),
+      reason: r.reason || 'Booking cancellation refund',
+      status: isCompleted ? 'Completed' : 'Processing',
+      requested_date: r.created_at || new Date().toISOString(),
+      processed_date: isCompleted ? (r.updated_at || r.created_at) : null
     }
   };
 };

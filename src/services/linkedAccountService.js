@@ -31,9 +31,9 @@ const getOrCreateLinkedAccount = async ({ user, vendorType, entityId, accountHol
     throw new Error(`Target entity (${vendorType}) not found for id: ${entityId}`);
   }
 
-  // 2. Check if real Razorpay linked account already exists in DB (not a dummy acc_fahara_ fallback)
+  // 2. Check if real Razorpay linked account already exists in DB (must start with 'acc_')
   const currentAccountId = existingRecord.payment_account_id || existingRecord.razorpay_linked_account_id;
-  if (currentAccountId && !currentAccountId.startsWith('acc_fahara_')) {
+  if (currentAccountId && currentAccountId.startsWith('acc_')) {
     return {
       success: true,
       accountId: currentAccountId,
@@ -66,45 +66,80 @@ const getOrCreateLinkedAccount = async ({ user, vendorType, entityId, accountHol
 
   const cleanPhone = user.phone ? String(user.phone).replace(/\D/g, '').slice(-10) : '9999999999';
 
-  if (razorpay && typeof razorpay.accounts?.create === 'function') {
-    try {
-      const accountPayload = {
-        email: accountEmail,
-        phone: cleanPhone,
-        type: 'route',
-        legal_business_name: accountHolderName.slice(0, 50),
-        business_type: 'individual',
-        profile: {
-          category: 'services',
-          subcategory: 'event_planning',
-          addresses: {
-            registered: {
-              street1: existingRecord.address || existingRecord.address_line1 || '123 Main Street',
-              street2: existingRecord.address_line2 || 'Locality',
-              city: existingRecord.city || 'Bengaluru',
-              state: existingRecord.state || 'Karnataka',
-              postal_code: existingRecord.postal_code || existingRecord.pincode || '560001',
-              country: 'IN'
-            }
-          }
-        },
-        notes: {
-          vendor_type: vendorType,
-          entity_id: entityId,
-          user_id: user.id,
-          account_holder: accountHolderName
-        }
-      };
+  if (!razorpay || typeof razorpay.accounts?.create !== 'function') {
+    const err = new Error('Razorpay SDK/API keys are missing or invalid in backend configuration.');
+    err.statusCode = 500;
+    throw err;
+  }
 
-      const accountResponse = await razorpay.accounts.create(accountPayload);
-      newAccountId = accountResponse.id;
-      accountStatus = accountResponse.status || 'ACTIVE';
-    } catch (error) {
-      console.warn(`[Razorpay Route Account Creation Error]: ${error.message}`);
-      throw new Error(`Razorpay Account Creation Failed: ${error.message || 'Check Razorpay Credentials'}`);
+  const INDIAN_STATES_MAP = {
+    'KA': 'Karnataka', 'MH': 'Maharashtra', 'TN': 'Tamil Nadu', 'DL': 'Delhi',
+    'TS': 'Telangana', 'AP': 'Andhra Pradesh', 'KL': 'Kerala', 'GJ': 'Gujarat',
+    'RJ': 'Rajasthan', 'UP': 'Uttar Pradesh', 'MP': 'Madhya Pradesh', 'WB': 'West Bengal',
+    'HR': 'Haryana', 'PB': 'Punjab', 'OD': 'Odisha', 'BR': 'Bihar', 'CT': 'Chhattisgarh',
+    'JH': 'Jharkhand', 'UT': 'Uttarakhand', 'HP': 'Himachal Pradesh', 'GA': 'Goa',
+    'AS': 'Assam', 'TR': 'Tripura', 'ML': 'Meghalaya', 'MN': 'Manipur', 'NL': 'Nagaland',
+    'AR': 'Arunachal Pradesh', 'MZ': 'Mizoram', 'SK': 'Sikkim', 'PY': 'Puducherry',
+    'CH': 'Chandigarh', 'JK': 'Jammu and Kashmir', 'LA': 'Ladakh', 'AN': 'Andaman and Nicobar Islands'
+  };
+
+  const rawState = existingRecord.state || user?.state || 'Karnataka';
+  const stateUpper = String(rawState).trim().toUpperCase();
+  const cleanState = INDIAN_STATES_MAP[stateUpper] ||
+    Object.values(INDIAN_STATES_MAP).find(s => s.toUpperCase() === stateUpper) ||
+    (String(rawState).trim().length > 2 ? String(rawState).trim() : 'Karnataka');
+
+  try {
+    const accountPayload = {
+      email: accountEmail,
+      phone: cleanPhone,
+      type: 'route',
+      legal_business_name: accountHolderName.slice(0, 50),
+      business_type: 'individual',
+      profile: {
+        category: 'services',
+        subcategory: 'event_planning',
+        addresses: {
+          registered: {
+            street1: existingRecord.address || existingRecord.address_line1 || user?.address || '123 Main Street',
+            street2: existingRecord.address_line2 || 'Locality',
+            city: existingRecord.city || user?.city || 'Bengaluru',
+            state: cleanState,
+            postal_code: existingRecord.postal_code || existingRecord.pincode || user?.pincode || '560001',
+            country: 'IN'
+          }
+        }
+      },
+      notes: {
+        vendor_type: vendorType,
+        entity_id: entityId,
+        user_id: user.id,
+        account_holder: accountHolderName
+      }
+    };
+
+    const accountResponse = await razorpay.accounts.create(accountPayload);
+    if (!accountResponse || !accountResponse.id || !accountResponse.id.startsWith('acc_')) {
+      throw new Error(`Razorpay returned invalid account creation response: ${JSON.stringify(accountResponse)}`);
     }
-  } else {
-    throw new Error('Razorpay API keys are missing or invalid in backend configuration.');
+    newAccountId = accountResponse.id;
+    accountStatus = accountResponse.status || 'ACTIVE';
+  } catch (error) {
+    const msg = error.error?.description || error.message || 'Check Razorpay Credentials';
+    console.error(`[Razorpay Route Account Creation Error]: ${msg}`);
+
+    // If Razorpay error states the merchant email already exists for an account, recover the existing account ID
+    const match = msg.match(/account\s*-\s*([A-Za-z0-9_]+)/i);
+    if (match && match[1]) {
+      const existingRzpId = match[1].startsWith('acc_') ? match[1] : `acc_${match[1]}`;
+      console.log(`[Razorpay Route Account Recovery] Recovered existing Razorpay account ID: ${existingRzpId} for email: ${accountEmail}`);
+      newAccountId = existingRzpId;
+      accountStatus = 'ACTIVE';
+    } else {
+      const err = new Error(`Razorpay Account Creation Failed: ${msg}`);
+      err.statusCode = error.statusCode || 400;
+      throw err;
+    }
   }
 
   // 4. Update Database with newly created Linked Account ID
@@ -201,83 +236,74 @@ const updateBankDetailsAndVerify = async ({
 
   // 2. Call Razorpay Product Route API to attach settlements bank account details
   const authHeader = getAuthHeader();
-  if (authHeader) {
-    try {
-      let productId = null;
-
-      // Step 2a: Check if route product already exists for account
-      try {
-        const getProductsReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
-          method: 'GET',
-          headers: { 'Authorization': authHeader }
-        });
-        const productsData = await getProductsReq.json();
-        if (productsData.items && Array.isArray(productsData.items)) {
-          const routeProd = productsData.items.find(p => p.product_name === 'route' || p.product_name === 'route_payouts');
-          if (routeProd) productId = routeProd.id;
-        }
-      } catch (getErr) {
-        console.warn(`[Razorpay Product Fetch Warning]: ${getErr.message}`);
-      }
-
-      // Step 2b: If product not found, request route product creation
-      if (!productId) {
-        const productReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
-          method: 'POST',
-          headers: {
-            'Authorization': authHeader,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ product_name: 'route' })
-        });
-        const productData = await productReq.json();
-        productId = productData.id;
-
-        if (!productId && productData.error) {
-          console.warn(`[Razorpay Product Route Create Notice]: ${productData.error.description || 'Product creation returned error'}`);
-        }
-      }
-
-      // Step 2c: Update product settlements bank details if productId exists
-      if (productId) {
-        const patchReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': authHeader,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            tnc_accepted: true,
-            settlements: {
-              account_number: cleanAccount,
-              ifsc_code: cleanIfsc,
-              beneficiary_name: cleanHolder
-            }
-          })
-        });
-        const patchData = await patchReq.json();
-
-        if (patchData.error) {
-          const rzpErr = patchData.error.description || 'Razorpay Bank Verification Failed';
-          console.warn(`[Razorpay Bank Patch Warning]: ${rzpErr}`);
-          // If error is specific to merchant lock/activation form edit restriction, log and proceed with DB update
-          if (!rzpErr.toLowerCase().includes('locked for editing')) {
-            const err = new Error(`Razorpay Bank Validation Failed: ${rzpErr}`);
-            err.statusCode = 400;
-            throw err;
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`[Razorpay Product Route Bank Link Error]: ${error.message}`);
-      if (error.statusCode === 400 && !error.message.includes('locked for editing')) {
-        throw error;
-      }
-      console.log('[Razorpay Linked Account fallback] Proceeding with bank detail registration in DB.');
-    }
-  } else {
+  if (!authHeader) {
     const err = new Error('Razorpay API keys are missing or invalid in environment config');
     err.statusCode = 500;
+    throw err;
+  }
+
+  let productId = null;
+
+  // Step 2a: Check if route product already exists for account
+  try {
+    const getProductsReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader }
+    });
+    const productsData = await getProductsReq.json();
+    if (productsData.items && Array.isArray(productsData.items)) {
+      const routeProd = productsData.items.find(p => p.product_name === 'route' || p.product_name === 'route_payouts');
+      if (routeProd) productId = routeProd.id;
+    }
+  } catch (getErr) {
+    console.warn(`[Razorpay Product Fetch Warning]: ${getErr.message}`);
+  }
+
+  // Step 2b: If product not found, request route product creation
+  if (!productId) {
+    const productReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ product_name: 'route' })
+    });
+    const productData = await productReq.json();
+    productId = productData.id;
+
+    if (!productId) {
+      const rzpErr = productData.error?.description || 'Failed to create Route product for Razorpay account.';
+      console.error(`[Razorpay Product Route Create Error]: ${rzpErr}`);
+      const err = new Error(`Razorpay Product Creation Failed: ${rzpErr}`);
+      err.statusCode = productReq.status || 400;
+      throw err;
+    }
+  }
+
+  // Step 2c: Update product settlements bank details
+  const patchReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      tnc_accepted: true,
+      settlements: {
+        account_number: cleanAccount,
+        ifsc_code: cleanIfsc,
+        beneficiary_name: cleanHolder
+      }
+    })
+  });
+  const patchData = await patchReq.json();
+
+  if (patchData.error) {
+    const rzpErr = patchData.error.description || 'Razorpay Bank Verification Failed';
+    console.error(`[Razorpay Bank Patch Error]: ${rzpErr}`);
+    const err = new Error(`Razorpay Bank Verification Failed: ${rzpErr}`);
+    err.statusCode = patchReq.status || 400;
     throw err;
   }
 
