@@ -295,7 +295,28 @@ const sendAdminLoginOtp = async (emailInput, password, clientIp) => {
   checkIpSecurity(clientIp);
 
   const email = emailInput ? String(emailInput).trim().toLowerCase() : '';
-  const user = await userRepository.findUserByEmail(email);
+  const adminEmailConfig = (process.env.ADMIN_EMAIL || 'vexatech.connect@gmail.com').trim().toLowerCase();
+  
+  let user = await userRepository.findUserByEmail(email);
+  const isAdminEmailMatch = email === adminEmailConfig;
+
+  // Auto-provision or promote admin user if email matches ADMIN_EMAIL config in .env
+  if (isAdminEmailMatch) {
+    const adminRole = await roleRepository.findRoleByName('ADMIN');
+    if (!user) {
+      user = await userRepository.createUser({
+        email: email,
+        name: 'System Admin',
+        role_id: adminRole?.id,
+        email_verified: true,
+        status: 'ACTIVE'
+      });
+      user = await userRepository.findUserByEmail(email);
+    } else if (user.roles?.name !== 'ADMIN' && adminRole) {
+      await userRepository.updateUser(user.id, { role_id: adminRole.id });
+      user = await userRepository.findUserByEmail(email);
+    }
+  }
 
   if (!user || (user.roles?.name || '').toUpperCase() !== 'ADMIN') {
     recordFailedAttempt(clientIp);
@@ -346,8 +367,18 @@ const verifyAdminLoginOtp = async (emailInput, otpInput, clientIp) => {
 
   const email = emailInput ? String(emailInput).trim().toLowerCase() : '';
   const otp = otpInput ? String(otpInput).trim() : '';
+  const adminEmailConfig = (process.env.ADMIN_EMAIL || 'vexatech.connect@gmail.com').trim().toLowerCase();
 
-  const user = await userRepository.findUserByEmail(email);
+  let user = await userRepository.findUserByEmail(email);
+
+  if ((!user || (user.roles?.name || '').toUpperCase() !== 'ADMIN') && email === adminEmailConfig) {
+    const adminRole = await roleRepository.findRoleByName('ADMIN');
+    if (user && adminRole) {
+      await userRepository.updateUser(user.id, { role_id: adminRole.id });
+      user = await userRepository.findUserByEmail(email);
+    }
+  }
+
   if (!user || (user.roles?.name || '').toUpperCase() !== 'ADMIN') {
     recordFailedAttempt(clientIp);
     const error = new Error('Admin user not found.');

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const paymentService = require('./paymentService');
 
 const getSummary = async (ownerId, role) => {
   const isAdmin = role === 'ADMIN';
@@ -76,18 +77,12 @@ const getSummary = async (ownerId, role) => {
       });
     }
 
-    // Pending payouts = net revenue after platform charge within 7-day payout window
-    const pendingPayoutsAmount = bookings
-      .filter(b => {
-        if (!isSuccessful(b)) return false;
-        const payoutDate = new Date(b.created_at || Date.now());
-        payoutDate.setDate(payoutDate.getDate() + 7);
-        return payoutDate > new Date();
-      })
-      .reduce((sum, b) => {
-        const storedFee = Number(b.fahara_service_charge || (Number(b.subtotal || 0) * 0.04));
-        return sum + (Number(b.subtotal || b.total || 0) - storedFee);
-      }, 0);
+    // Pending payouts = exact sum of un-disbursed partner payouts from paymentService
+    const adminPayoutsResp = await paymentService.getAdminPayouts({});
+    const pendingPayoutsList = adminPayoutsResp.data || [];
+    const pendingPayoutsAmount = pendingPayoutsList
+      .filter(p => p.status !== 'COMPLETED' && p.payout_status !== 'COMPLETED')
+      .reduce((sum, p) => sum + Number(p.payable_amount || p.gross_amount || 0), 0);
 
     adminExtra = {
       total_cafes: totalCafes,

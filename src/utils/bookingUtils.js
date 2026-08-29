@@ -122,9 +122,129 @@ const isBookingWithin24Hours = (bookingDateVal, startTimeVal) => {
   return hoursDiff < 24;
 };
 
+const parseTimeToMinutes = (timeVal) => {
+  if (!timeVal) return null;
+  if (timeVal instanceof Date) {
+    if (isNaN(timeVal.getTime())) return null;
+    return timeVal.getUTCHours() * 60 + timeVal.getUTCMinutes();
+  }
+  let str = String(timeVal).trim();
+  if (str.includes('T')) {
+    const timePart = str.split('T')[1];
+    str = timePart.substring(0, 8);
+  }
+  const isPM = /PM/i.test(str);
+  const isAM = /AM/i.test(str);
+  if (isAM || isPM) {
+    const clean = str.replace(/AM|PM/gi, '').trim();
+    let [h, m] = clean.split(':').map(Number);
+    if (isNaN(h)) return null;
+    m = isNaN(m) ? 0 : m;
+    if (isPM && h !== 12) h += 12;
+    if (isAM && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  const parts = str.split(':').map(Number);
+  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return parts[0] * 60 + parts[1];
+  }
+  return null;
+};
+
+const formatMinutesTo12Hour = (minutes) => {
+  if (minutes === null || minutes === undefined || isNaN(minutes)) return '';
+  let h = Math.floor(minutes / 60) % 24;
+  const m = Math.floor(minutes % 60);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
+};
+
+/**
+ * Checks if the requested booking start/end times fall outside the entity's (cafe or event service) operating hours.
+ * Returns null if valid, or error message string if invalid.
+ */
+const checkBookingTimeBusinessHours = (entity, dateVal, startTimeVal, endTimeVal, entityLabel = 'Venue') => {
+  if (!entity || !dateVal || !startTimeVal || !endTimeVal) return null;
+
+  const dayName = getDayNameOfDate(dateVal);
+  if (!dayName) return null;
+
+  const businessHours = entity.cafe_business_hours || 
+                        entity.event_business_hours || 
+                        entity.users?.event_business_hours || 
+                        entity.business_hours || 
+                        entity.operating_hours || 
+                        entity.operatingHours || 
+                        entity.hours;
+
+  if (!businessHours) return null;
+
+  let dayEntry = null;
+  if (Array.isArray(businessHours) && businessHours.length > 0) {
+    dayEntry = businessHours.find(h => {
+      const val = (h.day_of_week || h.dayOfWeek || h.day || '').toString().trim().toUpperCase();
+      return val === dayName;
+    });
+  } else if (typeof businessHours === 'object') {
+    const keyLower = dayName.toLowerCase();
+    dayEntry = businessHours[keyLower] || businessHours[dayName];
+  }
+
+  if (dayEntry) {
+    const isClosed = dayEntry.is_closed === true || 
+                     dayEntry.isClosed === true || 
+                     dayEntry.isOpen === false || 
+                     String(dayEntry.is_closed).toLowerCase() === 'true';
+
+    if (isClosed) {
+      return `${entityLabel} "${name}" is closed on ${dayFormatted}s and is not available for this time slot.`;
+    }
+  }
+
+  let openMinutes = parseTimeToMinutes(dayEntry ? (dayEntry.open_time || dayEntry.openTime || dayEntry.open) : null);
+  let closeMinutes = parseTimeToMinutes(dayEntry ? (dayEntry.close_time || dayEntry.closeTime || dayEntry.close) : null);
+
+  // Fallback defaults if null or missing (default operating hours: 09:00 AM - 10:00 PM)
+  if (openMinutes === null) openMinutes = 540; // 09:00 AM
+  if (closeMinutes === null) closeMinutes = 1320; // 10:00 PM
+
+  const startMinutes = parseTimeToMinutes(startTimeVal);
+  const endMinutes = parseTimeToMinutes(endTimeVal);
+
+  if (startMinutes === null || endMinutes === null) return null;
+
+  const openStr = formatMinutesTo12Hour(openMinutes);
+  const closeStr = formatMinutesTo12Hour(closeMinutes);
+
+  if (closeMinutes > openMinutes) {
+    if (startMinutes < openMinutes || endMinutes > closeMinutes || startMinutes >= closeMinutes) {
+      const startStr = formatMinutesTo12Hour(startMinutes);
+      const endStr = formatMinutesTo12Hour(endMinutes);
+      return `Selected time (${startStr} - ${endStr}) is outside ${entityLabel} "${name}"'s operating hours (${openStr} - ${closeStr}) on ${dayFormatted}s.`;
+    }
+  } else {
+    let effStart = startMinutes;
+    let effEnd = endMinutes;
+    if (effStart < openMinutes && effStart < closeMinutes) effStart += 1440;
+    if (effEnd < openMinutes && effEnd <= closeMinutes) effEnd += 1440;
+    const effClose = closeMinutes + 1440;
+    if (effStart < openMinutes || effEnd > effClose) {
+      const startStr = formatMinutesTo12Hour(startMinutes);
+      const endStr = formatMinutesTo12Hour(endMinutes);
+      return `Selected time (${startStr} - ${endStr}) is outside ${entityLabel} "${name}"'s operating hours (${openStr} - ${closeStr}) on ${dayFormatted}s.`;
+    }
+  }
+
+  return null;
+};
+
 module.exports = {
   generateBookingNumber,
   getDayNameOfDate,
   isCafeClosedOnDate,
-  isBookingWithin24Hours
+  isBookingWithin24Hours,
+  checkBookingTimeBusinessHours
 };
+

@@ -1,9 +1,9 @@
 {
   "body": {
-    "company_name": "Test Event ",
-    "company_logo": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1787893362/fahara_uploads/zwvus6jgpamdymhxxiky.avif",
+    "company_name": "Test",
+    "company_logo": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1787931150/fahara_uploads/yrstr9xhpm7v4srxlron.avif",
     "company_banner": "",
-    "description": "Company Description",
+    "description": "Test Description",
     "working_hours": [
       {
         "dayOfWeek": "MONDAY",
@@ -51,8 +51,8 @@
     "business_registration_number": "",
     "established_year": null,
     "experience_years": 0,
-    "business_email": "infotrixsolutions82@gmail.com",
-    "business_phone": "8946029207",
+    "business_email": "test1@gmail.com",
+    "business_phone": "",
     "alternate_phone": "",
     "website_url": "",
     "instagram_url": "",
@@ -62,9 +62,9 @@
     "address_line1": "Test Address",
     "address_line2": "",
     "city": "Madurai",
-    "state": "Tamil Nadu ",
+    "state": "Tamil Nadu",
     "country": "India",
-    "postal_code": "625022",
+    "postal_code": "625011",
     "service_radius_km": 25
   }
 }

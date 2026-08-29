@@ -19,6 +19,7 @@ const auditRoutes = require('./routes/auditRoutes');
 const financeRoutes = require('./routes/financeRoutes');
 const favoriteRoutes = require('./routes/favoriteRoutes');
 const errorHandler = require('./middlewares/errorHandler');
+const requestLogger = require('./middlewares/requestLogger');
 const app = express();
 
 // Middlewares
@@ -43,6 +44,7 @@ app.use((err, req, res, next) => {
   next(err);
 });
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(requestLogger);
 app.use(express.static('public'));
 
 // Swagger Documentation

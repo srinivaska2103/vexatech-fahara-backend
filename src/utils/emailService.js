@@ -22,9 +22,11 @@ const getAdminEmail = () => process.env.ADMIN_EMAIL || 'vexatech.connect@gmail.c
 const sendOtpEmail = async (email, otp) => {
   const customHtml = templates.getOtpTemplate('there', otp);
 
-  console.log(`\n==============================================`);
-  console.log(`🔑 [LOCAL DEV OTP] Email: ${email} | OTP Code: ${otp}`);
-  console.log(`==============================================\n`);
+  console.log(`\n======================================================================`);
+  console.log(`🔑 [OTP GENERATED] Target Email: ${email}`);
+  console.log(`   OTP Code    : ${otp}`);
+  console.log(`   Expires In  : 5 Minutes`);
+  console.log(`======================================================================\n`);
 
   const mailOptions = {
     from: process.env.FROM_EMAIL,

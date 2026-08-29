@@ -54,10 +54,13 @@ router.get('/razorpay/linked-accounts/cafe/:cafeId/status', protect, paymentCont
 router.get('/razorpay/linked-accounts/event-manager/:eventManagerId/status', protect, paymentController.getEventManagerLinkedAccountStatus);
 
 
-// Owner routes
+// Owner & Partner routes
 router.get('/owner/payment-account', protect, paymentController.getOwnerPaymentAccount);
 router.patch('/owner/payment-account', protect, paymentController.updateOwnerPaymentAccount);
 router.put('/owner/payment-account', protect, paymentController.updateOwnerPaymentAccount);
+router.get('/me/payment-account', protect, paymentController.getOwnerPaymentAccount);
+router.patch('/me/payment-account', protect, paymentController.updateOwnerPaymentAccount);
+router.put('/me/payment-account', protect, paymentController.updateOwnerPaymentAccount);
 router.post('/owner/bank-verification', protect, paymentController.verifyBankDetails);
 router.get('/owner', protect, paymentController.getOwnerPayments);
 router.get('/owner/invoices', protect, paymentController.getOwnerInvoices);

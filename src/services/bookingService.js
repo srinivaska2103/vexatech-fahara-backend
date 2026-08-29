@@ -44,6 +44,9 @@ const createBooking = async (userId, data) => {
     throw error;
   }
 
+  // 1b-2. Check if selected booking time is within Cafe operating hours
+  const cafeBusinessHoursErr = bookingUtils.checkBookingTimeBusinessHours(cafe, booking_date, start_time, end_time, 'Cafe');
+
   // 1c. Enforce 24-hour advance booking policy
   if (bookingUtils.isBookingWithin24Hours(booking_date, start_time)) {
     const error = new Error('Bookings must be made at least 24 hours in advance of the scheduled booking time.');
@@ -70,6 +73,7 @@ const createBooking = async (userId, data) => {
   let event_service_amount = 0;
   let actual_package_id = package_id;
   let actual_event_service_id = null;
+  let eventServiceEntity = null;
 
   // Check if package_id is a CAFE's own package
   if (package_id && cafe.cafe_packages) {
@@ -88,6 +92,7 @@ const createBooking = async (userId, data) => {
       const eventServiceRepo = require('../repositories/eventServiceRepository');
       const extService = await eventServiceRepo.findEventServiceById(package_id);
       if (extService) {
+        eventServiceEntity = extService;
         // Check if event manager bank account is verified
         const prisma = require('../config/prisma');
         const eventProfile = await prisma.event_management_profiles.findFirst({
@@ -111,9 +116,29 @@ const createBooking = async (userId, data) => {
     const eventServiceRepo = require('../repositories/eventServiceRepository');
     const extService = await eventServiceRepo.findEventServiceById(event_service_id);
     if (extService) {
+      eventServiceEntity = extService;
       event_service_amount += Number(extService.price !== null && extService.price !== undefined ? extService.price : 0);
       actual_event_service_id = event_service_id;
     }
+  }
+
+  // Check Event Service business hours if selected
+  const eventBusinessHoursErr = eventServiceEntity 
+    ? bookingUtils.checkBookingTimeBusinessHours(eventServiceEntity, booking_date, start_time, end_time, 'Event Service')
+    : null;
+
+  if (cafeBusinessHoursErr && eventBusinessHoursErr) {
+    const error = new Error(`Both Cafe and Event Service are not available at the selected time slot.`);
+    error.statusCode = 400;
+    throw error;
+  } else if (cafeBusinessHoursErr) {
+    const error = new Error(cafeBusinessHoursErr);
+    error.statusCode = 400;
+    throw error;
+  } else if (eventBusinessHoursErr) {
+    const error = new Error(eventBusinessHoursErr);
+    error.statusCode = 400;
+    throw error;
   }
 
   // We'll trust food_amount, decoration_amount for now

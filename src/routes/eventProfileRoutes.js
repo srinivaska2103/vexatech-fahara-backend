@@ -183,9 +183,9 @@ const statusSchema = Joi.object({
 router.put('/:userId/status', protect, authorizeRoles('ADMIN'), validateRequest(statusSchema), eventProfileController.updateProfileStatus);
 
 // --- Event Profile Payment Account & Bank Verification Routes ---
-router.get('/me/payment-account', protect, authorizeRoles('EVENT_MANAGER', 'ADMIN'), eventProfileController.getPaymentAccount);
-router.patch('/me/payment-account', protect, authorizeRoles('EVENT_MANAGER'), eventProfileController.updatePaymentAccount);
-router.put('/me/payment-account', protect, authorizeRoles('EVENT_MANAGER'), eventProfileController.updatePaymentAccount);
+router.get('/me/payment-account', protect, eventProfileController.getPaymentAccount);
+router.patch('/me/payment-account', protect, eventProfileController.updatePaymentAccount);
+router.put('/me/payment-account', protect, eventProfileController.updatePaymentAccount);
 
 module.exports = router;
 

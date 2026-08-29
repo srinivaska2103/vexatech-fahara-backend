@@ -329,9 +329,23 @@ const getCafePaymentAccount = async (userId, cafeId) => {
   }
 
   if (!cafe) {
-    const error = new Error('Cafe not found');
-    error.statusCode = 404;
-    throw error;
+    const user = await userRepository.findUserById(userId);
+    return {
+      cafeId: null,
+      linkedAccountId: 'NOT_CREATED',
+      cashfreeVendorId: 'NOT_CREATED',
+      cashfreeVendorStatus: 'NOT_STARTED',
+      bankVerificationStatus: 'NOT_STARTED',
+      settlementStatus: 'DISABLED',
+      accountHolderName: user?.business_name || user?.name || '',
+      maskedBankAccount: 'Not Configured',
+      bankAccountLast4: null,
+      ifsc: 'Not Configured',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      bankVerifiedAt: null,
+      verificationReference: null
+    };
   }
 
   if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
@@ -375,9 +389,14 @@ const updateCafePaymentAccount = async (userId, cafeId, bankPayload) => {
   }
 
   if (!cafe) {
-    const error = new Error('Cafe not found');
-    error.statusCode = 404;
-    throw error;
+    const user = await userRepository.findUserById(userId);
+    cafe = await prisma.cafes.create({
+      data: {
+        owner_id: userId,
+        name: user?.business_name || `${user?.name || 'Owner'}'s Cafe`,
+        status: 'DRAFT'
+      }
+    });
   }
 
   if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {

@@ -834,8 +834,7 @@ const getOwnerPayouts = async (ownerId, query) => {
     const payoutDate = new Date(paymentDate);
     payoutDate.setDate(payoutDate.getDate() + 7);
 
-    const now = new Date();
-    const status = p.payout_status || (payoutDate <= now ? 'COMPLETED' : 'PROCESSING');
+    const status = p.payout_status === 'COMPLETED' || p.payout_status === 'SETTLED' ? 'COMPLETED' : (p.payout_status || 'PROCESSING');
 
     const b = p.bookings;
     const isEventManager = b?.event_services?.user_id === ownerId;
@@ -957,9 +956,8 @@ const getOwnerRevenueSummary = async (ownerId, query) => {
     if (date >= startOfYear) ytdRevenue += amt;
 
     // Check payout / settlement status from DB record
-    const payoutDate = new Date(date);
-    payoutDate.setDate(payoutDate.getDate() + 7);
-    if (p.payout_status === 'COMPLETED' || payoutDate <= today) {
+    const isCompletedPayout = p.payout_status === 'COMPLETED' || p.payout_status === 'SETTLED';
+    if (isCompletedPayout) {
       settledAmount += amt;
     } else {
       pendingSettlement += amt;
@@ -1132,7 +1130,39 @@ const getAdminPayouts = async (query) => {
   const refundedBookingIds = new Set(dbRefunds.map(r => r.booking_id).filter(Boolean));
 
   const allSuccessfulPayments = await paymentRepository.getAllSuccessfulPayments();
-  const successfulPayments = allSuccessfulPayments.filter(p => {
+  const existingBookingIds = new Set(allSuccessfulPayments.map(p => p.booking_id).filter(Boolean));
+
+  // Also fetch all successful bookings that might not have a payments record yet
+  const unlinkedBookings = await prisma.bookings.findMany({
+    where: {
+      id: { notIn: Array.from(existingBookingIds) },
+      OR: [
+        { payment_status: { in: ['PAID', 'SUCCESS', 'COMPLETED'] } },
+        { booking_status: { in: ['CONFIRMED', 'COMPLETED'] } }
+      ]
+    },
+    include: {
+      users: true,
+      cafes: { include: { users: true } },
+      event_services: { include: { users: true } }
+    }
+  });
+
+  // Synthesize payment objects for unlinked bookings
+  const syntheticPayments = unlinkedBookings.map(b => ({
+    id: `synth_${b.id}`,
+    booking_id: b.id,
+    paid_at: b.created_at || new Date(),
+    amount: b.total || b.subtotal || 0,
+    status: 'PAID',
+    payout_status: b.payout_status || 'PENDING',
+    payout_completed_at: b.payout_completed_at || null,
+    bookings: b
+  }));
+
+  const combinedPayments = [...allSuccessfulPayments, ...syntheticPayments];
+
+  const successfulPayments = combinedPayments.filter(p => {
     const b = p.bookings;
     const isRefunded = p.status === 'REFUNDED' || 
                        p.status === 'PARTIALLY_REFUNDED' || 
@@ -1143,7 +1173,8 @@ const getAdminPayouts = async (query) => {
                        (p.booking_id && refundedBookingIds.has(p.booking_id));
     return !isRefunded;
   });
-  const paymentIds = successfulPayments.map(p => p.id);
+
+  const paymentIds = successfulPayments.map(p => p.id).filter(id => !id.startsWith('synth_'));
   const splitsList = await prisma.payment_splits.findMany({
     where: { payment_id: { in: paymentIds } }
   });
@@ -1165,8 +1196,8 @@ const getAdminPayouts = async (query) => {
     const totalSubtotal = Number(b?.subtotal || p?.amount || 0);
     const cafeAmount = Math.max(0, totalSubtotal - eventAmount);
 
-    const hasCafeOwner = !!(b?.cafes?.users) && cafeAmount > 0;
-    const hasEventManager = !!(b?.event_service_id && b?.event_services?.users) && eventAmount > 0;
+    const hasCafeOwner = !!(b?.cafe_id || b?.cafes) && (cafeAmount > 0 || totalSubtotal > 0);
+    const hasEventManager = !!(b?.event_service_id || b?.event_services) && eventAmount > 0;
 
     const getSplitStatus = (vendorType) => {
       const split = splitsMap.get(`${p.id}:${vendorType}`);
@@ -1176,7 +1207,7 @@ const getAdminPayouts = async (query) => {
         if (split.transfer_status === 'PENDING' || split.settlement_status === 'PENDING') return 'PENDING';
         return 'PROCESSING';
       }
-      return p.payout_status || 'PENDING';
+      return p.payout_status || b?.payout_status || 'PENDING';
     };
 
     if (hasCafeOwner && hasEventManager) {
@@ -1197,11 +1228,11 @@ const getAdminPayouts = async (query) => {
         status: cafeStatus,
         payout_status: cafeStatus,
         payout_completed_at: cafeStatus === 'COMPLETED' ? (p.payout_completed_at || new Date()) : null,
-        reference_number: `REF-C-${p.id.substring(0,6).toUpperCase()}`,
+        reference_number: `REF-C-${String(p.id).replace('synth_', '').substring(0,6).toUpperCase()}`,
         partner_type: 'CAFE_OWNER',
-        partner_name: b.cafes.users.name || 'Cafe Owner',
-        name: b.cafes.users.name || 'Cafe Owner',
-        bank_name: b.cafes.users.bank_name || 'N/A'
+        partner_name: b?.cafes?.users?.name || b?.cafes?.name || 'Cafe Owner',
+        name: b?.cafes?.users?.name || b?.cafes?.name || 'Cafe Owner',
+        bank_name: b?.cafes?.users?.bank_name || 'N/A'
       });
 
       // Event Manager Payout
@@ -1218,20 +1249,22 @@ const getAdminPayouts = async (query) => {
         status: eventStatus,
         payout_status: eventStatus,
         payout_completed_at: eventStatus === 'COMPLETED' ? (p.payout_completed_at || new Date()) : null,
-        reference_number: `REF-E-${p.id.substring(0,6).toUpperCase()}`,
+        reference_number: `REF-E-${String(p.id).replace('synth_', '').substring(0,6).toUpperCase()}`,
         partner_type: 'EVENT_MANAGER',
-        partner_name: b.event_services.users.name || 'Event Manager',
-        name: b.event_services.users.name || 'Event Manager',
-        bank_name: b.event_services.users.bank_name || 'N/A'
+        partner_name: b?.event_services?.users?.name || b?.event_services?.service_name || 'Event Manager',
+        name: b?.event_services?.users?.name || b?.event_services?.service_name || 'Event Manager',
+        bank_name: b?.event_services?.users?.bank_name || 'N/A'
       });
     } else {
       let partnerType = 'CAFE_OWNER';
       let partnerUser = b?.cafes?.users;
+      let partnerName = partnerUser?.name || b?.cafes?.name || 'Cafe Partner';
       let grossAmount = cafeAmount > 0 ? cafeAmount : totalSubtotal;
 
       if (hasEventManager || (!hasCafeOwner && b?.event_services?.users)) {
         partnerType = 'EVENT_MANAGER';
         partnerUser = b?.event_services?.users;
+        partnerName = partnerUser?.name || b?.event_services?.service_name || 'Event Partner';
         grossAmount = eventAmount > 0 ? eventAmount : totalSubtotal;
       }
 
@@ -1250,10 +1283,10 @@ const getAdminPayouts = async (query) => {
         status: singleStatus,
         payout_status: singleStatus,
         payout_completed_at: singleStatus === 'COMPLETED' ? (p.payout_completed_at || new Date()) : null,
-        reference_number: `REF-${p.id.substring(0,8).toUpperCase()}`,
+        reference_number: `REF-${String(p.id).replace('synth_', '').substring(0,8).toUpperCase()}`,
         partner_type: partnerType,
-        partner_name: partnerUser?.name || 'Unknown Partner',
-        name: partnerUser?.name || 'Unknown Partner',
+        partner_name: partnerName,
+        name: partnerName,
         bank_name: partnerUser?.bank_name || 'N/A'
       });
     }

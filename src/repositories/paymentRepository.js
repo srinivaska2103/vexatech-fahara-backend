@@ -103,7 +103,10 @@ const getOwnerPaymentById = async (ownerId, paymentId) => {
 const getAllSuccessfulPayments = async () => {
   return await prisma.payments.findMany({
     where: { 
-      status: { in: ['SUCCESS', 'PAID'] }
+      OR: [
+        { status: { in: ['SUCCESS', 'PAID', 'COMPLETED', 'SUCCESSFUL'] } },
+        { bookings: { payment_status: { in: ['PAID', 'SUCCESS', 'COMPLETED'] } } }
+      ]
     },
     include: { 
       bookings: { 

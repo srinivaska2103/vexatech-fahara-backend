@@ -39,7 +39,8 @@ const findAllEventServices = async (query = {}, currentUser = null) => {
           phone: true,
           event_management_profiles: {
             select: { company_name: true }
-          }
+          },
+          event_business_hours: true
         },
       },
     },
@@ -52,9 +53,13 @@ const findEventServiceById = async (id) => {
     include: {
       users: {
         select: { 
+          name: true,
+          email: true,
+          phone: true,
           event_management_profiles: {
             select: { company_name: true }
-          }
+          },
+          event_business_hours: true
         },
       },
     },

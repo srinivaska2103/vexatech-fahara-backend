@@ -45,6 +45,7 @@ const getOrCreateLinkedAccount = async ({ user, vendorType, entityId, accountHol
 
   // 3. Create Linked Account via Razorpay V2 Accounts API
   const razorpay = getRazorpayInstance();
+  const authHeader = getAuthHeader();
   let newAccountId = null;
   let accountStatus = 'ACTIVE';
 
@@ -128,14 +129,34 @@ const getOrCreateLinkedAccount = async ({ user, vendorType, entityId, accountHol
     const msg = error.error?.description || error.message || 'Check Razorpay Credentials';
     console.error(`[Razorpay Route Account Creation Error]: ${msg}`);
 
-    // If Razorpay error states the merchant email already exists for an account, recover the existing account ID
+    // Check if error message contains account ID
     const match = msg.match(/account\s*-\s*([A-Za-z0-9_]+)/i);
     if (match && match[1]) {
-      const existingRzpId = match[1].startsWith('acc_') ? match[1] : `acc_${match[1]}`;
-      console.log(`[Razorpay Route Account Recovery] Recovered existing Razorpay account ID: ${existingRzpId} for email: ${accountEmail}`);
-      newAccountId = existingRzpId;
-      accountStatus = 'ACTIVE';
-    } else {
+      newAccountId = match[1].startsWith('acc_') ? match[1] : `acc_${match[1]}`;
+    }
+
+    // If not found in regex, query Razorpay V2 accounts listing to fetch actual account ID for email
+    if (!newAccountId && authHeader) {
+      try {
+        const fetchAccountsReq = await fetch(`https://api.razorpay.com/v2/accounts?email=${encodeURIComponent(accountEmail)}`, {
+          method: 'GET',
+          headers: { 'Authorization': authHeader }
+        });
+        const accountsData = await fetchAccountsReq.json();
+        if (accountsData.items && Array.isArray(accountsData.items) && accountsData.items.length > 0) {
+          const matchedAcc = accountsData.items.find(a => a.email === accountEmail) || accountsData.items[0];
+          if (matchedAcc && matchedAcc.id) {
+            newAccountId = matchedAcc.id;
+            accountStatus = matchedAcc.status || 'ACTIVE';
+            console.log(`[Razorpay Route Account Lookup] Recovered actual account ID: ${newAccountId} for ${accountEmail}`);
+          }
+        }
+      } catch (lookupErr) {
+        console.warn(`[Razorpay Account Lookup Warning]: ${lookupErr.message}`);
+      }
+    }
+
+    if (!newAccountId) {
       const err = new Error(`Razorpay Account Creation Failed: ${msg}`);
       err.statusCode = error.statusCode || 400;
       throw err;
@@ -244,67 +265,112 @@ const updateBankDetailsAndVerify = async ({
 
   let productId = null;
 
-  // Step 2a: Check if route product already exists for account
+  // Step 2: Update Bank Account Details directly on Razorpay Sub-Account & Route Product
   try {
-    const getProductsReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader }
-    });
-    const productsData = await getProductsReq.json();
-    if (productsData.items && Array.isArray(productsData.items)) {
-      const routeProd = productsData.items.find(p => p.product_name === 'route' || p.product_name === 'route_payouts');
-      if (routeProd) productId = routeProd.id;
-    }
-  } catch (getErr) {
-    console.warn(`[Razorpay Product Fetch Warning]: ${getErr.message}`);
-  }
-
-  // Step 2b: If product not found, request route product creation
-  if (!productId) {
-    const productReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
-      method: 'POST',
+    // 2a. Update Legal Business Name / Account Name on Razorpay V2 API
+    const patchAccountReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}`, {
+      method: 'PATCH',
       headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ product_name: 'route' })
+      body: JSON.stringify({
+        legal_business_name: cleanHolder.slice(0, 50)
+      })
     });
-    const productData = await productReq.json();
-    productId = productData.id;
-
-    if (!productId) {
-      const rzpErr = productData.error?.description || 'Failed to create Route product for Razorpay account.';
-      console.error(`[Razorpay Product Route Create Error]: ${rzpErr}`);
-      const err = new Error(`Razorpay Product Creation Failed: ${rzpErr}`);
-      err.statusCode = productReq.status || 400;
-      throw err;
+    const patchAccountData = await patchAccountReq.json();
+    if (patchAccountData.error) {
+      console.warn(`[Razorpay Account Patch Notice]: ${patchAccountData.error.description || patchAccountData.error.message}`);
     }
-  }
 
-  // Step 2c: Update product settlements bank details
-  const patchReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': authHeader,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      tnc_accepted: true,
-      settlements: {
-        account_number: cleanAccount,
-        ifsc_code: cleanIfsc,
-        beneficiary_name: cleanHolder
+    // 2b. Check if route product already exists for account
+    try {
+      const getProductsReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+        method: 'GET',
+        headers: { 'Authorization': authHeader }
+      });
+      const productsData = await getProductsReq.json();
+      if (productsData.items && Array.isArray(productsData.items) && productsData.items.length > 0) {
+        const routeProd = productsData.items.find(p => p.product_name === 'route' || p.product_name === 'route_payouts') || productsData.items[0];
+        if (routeProd) productId = routeProd.id;
       }
-    })
-  });
-  const patchData = await patchReq.json();
+    } catch (getErr) {
+      console.warn(`[Razorpay Product Fetch Warning]: ${getErr.message}`);
+    }
 
-  if (patchData.error) {
-    const rzpErr = patchData.error.description || 'Razorpay Bank Verification Failed';
-    console.error(`[Razorpay Bank Patch Error]: ${rzpErr}`);
-    const err = new Error(`Razorpay Bank Verification Failed: ${rzpErr}`);
-    err.statusCode = patchReq.status || 400;
-    throw err;
+    // 2c. If product not found, request route product creation
+    if (!productId) {
+      const productReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          product_name: 'route',
+          tnc_accepted: true
+        })
+      });
+      const productData = await productReq.json();
+      productId = productData.id || productData.item?.id;
+
+      if (!productId) {
+        const recheckReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products`, {
+          method: 'GET',
+          headers: { 'Authorization': authHeader }
+        });
+        const recheckData = await recheckReq.json();
+        if (recheckData.items && Array.isArray(recheckData.items) && recheckData.items.length > 0) {
+          productId = recheckData.items[0].id;
+        }
+      }
+    }
+
+    // 2d. Attach Bank Account Settlement Details to Razorpay Route Product
+    if (productId) {
+      console.log(`[Razorpay Bank Settlement Syncing] Account: ${accountId} | ProductId: ${productId}`);
+      console.log(`[Razorpay Bank Settlement Payload]:`, JSON.stringify({
+        tnc_accepted: true,
+        settlements: {
+          account_number: cleanAccount,
+          ifsc_code: cleanIfsc,
+          beneficiary_name: cleanHolder
+        }
+      }, null, 2));
+
+      const patchReq = await fetch(`https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tnc_accepted: true,
+          settlements: {
+            account_number: cleanAccount,
+            ifsc_code: cleanIfsc,
+            beneficiary_name: cleanHolder
+          }
+        })
+      });
+      const patchData = await patchReq.json();
+      console.log(`[Razorpay Bank Settlement Response]:`, JSON.stringify(patchData, null, 2));
+
+      if (patchData.error) {
+        console.warn(`[Razorpay Bank Settlement Patch Error]:`, patchData.error);
+        const rzpErr = patchData.error.description || patchData.error.message || 'Failed to update settlement bank account on Razorpay';
+        const err = new Error(`Razorpay Bank Settlement Update Failed: ${rzpErr}`);
+        err.statusCode = patchReq.status || 400;
+        throw err;
+      } else {
+        console.log(`[Razorpay Bank Settlement Success]: Bank account (${maskedAccount}, IFSC: ${cleanIfsc}, Beneficiary: ${cleanHolder}) linked to Razorpay account ${accountId}`);
+      }
+    } else {
+      console.warn(`[Razorpay Product Route Warning]: Could not acquire productId for account ${accountId}`);
+    }
+  } catch (productErr) {
+    console.error(`[Razorpay Bank Sync Error]: ${productErr.message}`);
+    throw productErr;
   }
 
   // 3. Update DB records safely

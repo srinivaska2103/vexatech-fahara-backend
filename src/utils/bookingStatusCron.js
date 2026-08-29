@@ -70,9 +70,11 @@ const runAutoComplete = async () => {
 const startBookingStatusCron = () => {
   const { checkVendorSettlements } = require('../services/transferService');
 
-  // Run immediately when server starts
-  runAutoComplete();
-  checkVendorSettlements();
+  // Run startup cron checks after 10 seconds so DB connection pool initializes cleanly first
+  setTimeout(() => {
+    runAutoComplete().catch(() => {});
+    checkVendorSettlements().catch(() => {});
+  }, 10000);
 
   // Schedule auto-complete every 15 minutes
   cron.schedule('*/15 * * * *', runAutoComplete);
