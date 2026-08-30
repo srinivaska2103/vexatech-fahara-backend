@@ -6,53 +6,10 @@ const otpUtils = require('../utils/otpUtils');
 const jwtUtils = require('../utils/jwtUtils');
 const emailService = require('../utils/emailService');
 
-// In-memory security tracker for failed attempts and blocked IPs
-const failedAttemptsMap = new Map(); // key: ip, value: { count: number, blockedUntil: Date|null }
-const blockedIpsSet = new Set();
-
-const isLoopbackIp = (ip) => {
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost' || ip === 'unknown';
-};
-
-const checkIpSecurity = (clientIp) => {
-  const ip = clientIp || 'unknown';
-  if (isLoopbackIp(ip)) return;
-  
-  if (blockedIpsSet.has(ip)) {
-    const record = failedAttemptsMap.get(ip);
-    if (record && record.blockedUntil && new Date() < record.blockedUntil) {
-      const error = new Error('Your IP has been blocked due to 3 failed login attempts from an unauthorized device.');
-      error.statusCode = 403;
-      throw error;
-    } else {
-      // Expiry passed, unblock
-      blockedIpsSet.delete(ip);
-      failedAttemptsMap.delete(ip);
-    }
-  }
-};
-
-const recordFailedAttempt = (clientIp) => {
-  const ip = clientIp || 'unknown';
-  if (isLoopbackIp(ip)) return;
-  let record = failedAttemptsMap.get(ip) || { count: 0, blockedUntil: null };
-  record.count += 1;
-  if (record.count >= 3) {
-    const blockedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // Block for 24 hours
-    record.blockedUntil = blockedUntil;
-    blockedIpsSet.add(ip);
-    failedAttemptsMap.set(ip, record);
-    console.warn(`[SECURITY ALERT] IP ${ip} has been BLOCKED after 3 failed login attempts.`);
-  } else {
-    failedAttemptsMap.set(ip, record);
-  }
-};
-
-const resetFailedAttempts = (clientIp) => {
-  const ip = clientIp || 'unknown';
-  failedAttemptsMap.delete(ip);
-  blockedIpsSet.delete(ip);
-};
+// Security tracker helper functions (disabled IP blocking)
+const checkIpSecurity = (clientIp) => {};
+const recordFailedAttempt = (clientIp) => {};
+const resetFailedAttempts = (clientIp) => {};
 
 const registerUser = async (userData) => {
   const email = userData.email ? String(userData.email).trim().toLowerCase() : '';

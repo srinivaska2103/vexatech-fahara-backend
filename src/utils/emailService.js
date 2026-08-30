@@ -83,7 +83,7 @@ const sendNewAccountNotificationToAdmin = async (user) => {
   const adminEmail = getAdminEmail();
   const subject = `New Account Created: ${user.roleName || 'User'}`;
   const text = `A new account has been created.\n\nName: ${user.name}\nEmail: ${user.email}\nRole: ${user.roleName || 'User'}\nPhone: ${user.phone || 'N/A'}`;
-  const html = `<p>A new account has been created.</p><p><b>Name:</b> ${user.name}</p><p><b>Email:</b> ${user.email}</p><p><b>Role:</b> ${user.roleName || 'User'}</p><p><b>Phone:</b> ${user.phone || 'N/A'}</p>`;
+  const html = templates.getNewAccountNotificationTemplate(user);
   
   await sendEmail(adminEmail, subject, text, html);
 };

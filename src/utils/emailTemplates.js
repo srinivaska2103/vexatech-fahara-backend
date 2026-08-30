@@ -63,7 +63,7 @@ const getEmailFooter = () => `
     <div style="margin: 16px 0; font-size: 12px; color: #A67B5B;">
       <a href="${FRONTEND_URL}/customer/bookings" style="color: #6F4E37; text-decoration: none; font-weight: 600; margin: 0 10px;">My Bookings</a> • 
       <a href="${FRONTEND_URL}/customer/profile" style="color: #6F4E37; text-decoration: none; font-weight: 600; margin: 0 10px;">Account Settings</a> • 
-      <a href="${FRONTEND_URL}" style="color: #6F4E37; text-decoration: none; font-weight: 600; margin: 0 10px;">Explore Cafes</a>
+      <a href="${FRONTEND_URL}/customer/cafe" style="color: #6F4E37; text-decoration: none; font-weight: 600; margin: 0 10px;">Explore Cafes</a>
     </div>
     <p style="font-size: 12px; color: #A09085; margin: 16px 0 0 0; line-height: 1.5;">
       © ${new Date().getFullYear()} Fahara Inc. All rights reserved.<br>
@@ -179,8 +179,8 @@ const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = 
   ` : '';
 
   const ctaBtnHtml = ctaLink ? `
-    <div style="text-align: center; margin: 32px 0 10px 0;">
-      <a href="${ctaLink}" target="_blank" style="background: linear-gradient(135deg, #2C1810 0%, #4A2C11 100%); color: #ffffff; padding: 16px 36px; text-decoration: none; border-radius: 12px; font-size: 16px; font-weight: 800; display: inline-block; box-shadow: 0 6px 18px rgba(44, 24, 16, 0.3); letter-spacing: 0.5px;">
+    <div style="text-align: center; margin: 24px 0 24px 0;">
+      <a href="${ctaLink}" target="_blank" style="background: linear-gradient(135deg, #2C1810 0%, #4A2C11 50%, #6F4E37 100%); color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 800; display: inline-block; box-shadow: 0 6px 18px rgba(44, 24, 16, 0.25); letter-spacing: 0.5px;">
         ${ctaText} →
       </a>
     </div>
@@ -213,10 +213,10 @@ const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = 
                   ${getEmailHeader(title, statusTag)}
                   <div class="content" style="padding: 36px 32px; text-align: left; line-height: 1.6; color: #333333;">
                     ${bodyHtml}
+                    ${ctaBtnHtml}
                     ${metaGridHtml}
                     ${financialTableHtml}
                     ${actionToolbarHtml}
-                    ${ctaBtnHtml}
                   </div>
                   ${getEmailFooter()}
                 </td>
@@ -247,7 +247,12 @@ const getOtpTemplate = (name, otp) => {
       <span style="display: inline-block; background-color: #FEF3C7; color: #92400E; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 12px;">⏳ Valid for 5 minutes. Do not share this code.</span>
     </p>
   `;
-  return generateBaseTemplate({ title: 'Security Verification', bodyHtml });
+  return generateBaseTemplate({ 
+    title: 'Security Verification Code', 
+    bodyHtml,
+    ctaLink: `${FRONTEND_URL}/login`,
+    ctaText: 'Verify Account & Log In'
+  });
 };
 
 // 2. Reset Password
@@ -298,7 +303,7 @@ const getBookingRequestOwnerTemplate = (ownerName, bookingId, customerName, summ
     summaryItems, 
     bookingId: targetId,
     status: 'PENDING',
-    ctaLink: `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`, 
+    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings/${targetId}`, 
     ctaText: 'Manage Booking in Dashboard' 
   });
 };
@@ -338,7 +343,7 @@ const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summary
     summaryItems, 
     bookingId: targetId,
     status: 'PAID',
-    ctaLink: `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`, 
+    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings/${targetId}`, 
     ctaText: 'View Owner Dashboard' 
   });
 };
@@ -378,7 +383,7 @@ const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bo
     summaryItems, 
     bookingId: targetId,
     status: 'CONFIRMED',
-    ctaLink: `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`, 
+    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings/${targetId}`, 
     ctaText: 'View Dashboard' 
   });
 };
@@ -400,7 +405,7 @@ const getBookingCancelledCustomerTemplate = (name, bookingId, reason, summaryIte
     summaryItems, 
     bookingId: targetId,
     status: 'CANCELLED',
-    ctaLink: `${FRONTEND_URL}/customer/bookings`,
+    ctaLink: `${FRONTEND_URL}/customer/cafe`,
     ctaText: 'Browse Other Cafes'
   });
 };
@@ -418,7 +423,9 @@ const getBookingCancelledOwnerTemplate = (ownerName, bookingId, cancelledBy, rea
     bodyHtml, 
     summaryItems, 
     bookingId: targetId,
-    status: 'CANCELLED' 
+    status: 'CANCELLED',
+    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings`,
+    ctaText: 'View Owner Bookings'
   });
 };
 
@@ -441,8 +448,8 @@ const getPayoutCompletedTemplate = (name, amount, referenceNumber, partnerType =
   ];
 
   const ctaLink = partnerType === 'EVENT_MANAGER' 
-    ? `${EM_FRONTEND_URL}/revenue/payouts` 
-    : `${CAFE_FRONTEND_URL}/owner/revenue/payouts`;
+    ? `${EM_FRONTEND_URL}/event/revenue` 
+    : `${CAFE_FRONTEND_URL}/event/revenue`;
 
   return generateBaseTemplate({ 
     title: 'Payout Transferred 💸', 
@@ -512,8 +519,8 @@ const getSupportTicketTemplate = (ticketData) => {
     bodyHtml, 
     summaryItems, 
     status: 'PENDING',
-    ctaLink: `${ADMIN_FRONTEND_URL}/admin/support`,
-    ctaText: 'Open Admin Dashboard'
+    ctaLink: `${ADMIN_FRONTEND_URL}/admin/notifications`,
+    ctaText: 'Open Admin Notifications'
   });
 };
 
@@ -548,7 +555,7 @@ const getKycStatusTemplate = (name, kycStatus, rejectionReason = null, roleName 
     ...(rejectionReason ? [{ label: 'Rejection Reason', value: rejectionReason }] : [])
   ];
 
-  const ctaUrl = roleName === 'Event Manager' ? `${EM_FRONTEND_URL}/settings` : `${CAFE_FRONTEND_URL}/owner/settings`;
+  const ctaUrl = roleName === 'Event Manager' ? `${EM_FRONTEND_URL}/event/settings` : `${CAFE_FRONTEND_URL}/event/settings`;
 
   return generateBaseTemplate({ 
     title: statusTitle, 
@@ -577,7 +584,7 @@ const getBankVerifiedTemplate = (name, roleName = 'Partner', maskedAccount = 'XX
     { label: 'Settlement Engine', value: 'Razorpay Route' }
   ];
 
-  const ctaUrl = roleName === 'Event Manager' ? `${EM_FRONTEND_URL}/settings` : `${CAFE_FRONTEND_URL}/owner/settings`;
+  const ctaUrl = roleName === 'Event Manager' ? `${EM_FRONTEND_URL}/event/settings` : `${CAFE_FRONTEND_URL}/event/settings`;
 
   return generateBaseTemplate({ 
     title: 'Bank Verification Successful 🏦', 
@@ -608,7 +615,7 @@ const getEntityRejectedTemplate = (name, entityType = 'Cafe Venue', entityName =
     { label: 'Rejection Reason', value: rejectionReason }
   ];
 
-  const ctaUrl = entityType.toLowerCase().includes('event') ? `${EM_FRONTEND_URL}/settings` : `${CAFE_FRONTEND_URL}/owner/settings`;
+  const ctaUrl = entityType.toLowerCase().includes('event') ? `${EM_FRONTEND_URL}/event/settings` : `${CAFE_FRONTEND_URL}/event/settings`;
 
   return generateBaseTemplate({ 
     title: `${entityType} Review Update ⚠️`, 
@@ -625,8 +632,8 @@ const getSettlementCompletedTemplate = (name, amount, bookingNumber, referenceNu
   const isEventManager = partnerType === 'EVENT_MANAGER';
   const partnerRoleTitle = isEventManager ? 'Event Manager' : 'Cafe Owner';
   const ctaLink = isEventManager 
-    ? `${EM_FRONTEND_URL}/revenue/payouts` 
-    : `${CAFE_FRONTEND_URL}/owner/revenue/payouts`;
+    ? `${EM_FRONTEND_URL}/event/revenue` 
+    : `${CAFE_FRONTEND_URL}/event/revenue`;
 
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${name},</p>
@@ -656,6 +663,32 @@ const getSettlementCompletedTemplate = (name, amount, bookingNumber, referenceNu
   });
 };
 
+// 14. New Account Created (Admin Notification)
+const getNewAccountNotificationTemplate = (user) => {
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi Admin,</p>
+    <div style="background-color: #FFF8F0; border-left: 4px solid #6F4E37; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #2C1810; margin: 0; font-weight: 800;">👤 New Account Registration</p>
+      <p style="font-size: 14px; color: #7A6053; margin: 6px 0 0 0;">A new user account (<strong style="color: #6F4E37;">${user.email}</strong>) has been registered on the platform.</p>
+    </div>
+  `;
+
+  const summaryItems = [
+    { label: 'Full Name', value: user.name || 'N/A' },
+    { label: 'Email Address', value: user.email },
+    { label: 'Account Role', value: user.roleName || 'Customer', isHighlight: true },
+    { label: 'Phone Number', value: user.phone || 'N/A' }
+  ];
+
+  return generateBaseTemplate({ 
+    title: `New Account: ${user.roleName || 'Customer'}`, 
+    bodyHtml, 
+    summaryItems, 
+    ctaLink: `${ADMIN_FRONTEND_URL}/admin/customers`,
+    ctaText: 'Review User in Admin Panel'
+  });
+};
+
 module.exports = {
   getOtpTemplate,
   getResetPasswordTemplate,
@@ -673,6 +706,7 @@ module.exports = {
   getKycStatusTemplate,
   getBankVerifiedTemplate,
   getEntityRejectedTemplate,
-  getSettlementCompletedTemplate
+  getSettlementCompletedTemplate,
+  getNewAccountNotificationTemplate
 };
 
