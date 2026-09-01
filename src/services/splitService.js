@@ -8,24 +8,40 @@ const GST_PERCENTAGE = parseFloat(process.env.GST_PERCENTAGE || '5');
  * Recalculates subtotal, platform fee, GST, and total on backend.
  */
 const calculateBookingPrice = (booking) => {
+  if (booking && booking.total && Number(booking.total) > 0) {
+    return {
+      cafeAmount: Number(booking.cafe_amount || 0),
+      eventServiceAmount: Number(booking.event_service_amount || 0),
+      subtotal: Number(booking.subtotal || 0),
+      platformFeePercentage: 3,
+      platformFee: Number(booking.fahara_service_charge || 0),
+      transactionFee: Number(booking.transaction_fee || 0),
+      gstAmount: Number(booking.gst || 0),
+      total: Number(booking.total)
+    };
+  }
+
   const cafeAmount = Number(booking.cafe_amount || 0);
   const eventServiceAmount = Number(booking.event_service_amount || 0);
   const foodAmount = Number(booking.food_amount || 0);
   const decorationAmount = Number(booking.decoration_amount || 0);
   const extraPersonAmount = Number(booking.extra_person_amount || 0);
+  const discount = Number(booking.discount || 0);
 
-  const subtotal = cafeAmount + eventServiceAmount + foodAmount + decorationAmount + extraPersonAmount;
-  const platformFee = Number(((subtotal * PLATFORM_FEE_PERCENTAGE) / 100).toFixed(2));
-  const gstAmount = Number((((subtotal + platformFee) * GST_PERCENTAGE) / 100).toFixed(2));
-  const total = Number((subtotal + platformFee + gstAmount).toFixed(2));
+  const subtotal = Number(booking.subtotal || (cafeAmount + eventServiceAmount + foodAmount + decorationAmount + extraPersonAmount - discount));
+  const platformFee = Number((subtotal * 0.03).toFixed(2));
+  const transactionFee = Number((subtotal * 0.03).toFixed(2));
+  const gstAmount = Number((transactionFee * 0.18).toFixed(2));
+  const total = Number((subtotal + platformFee + transactionFee + gstAmount).toFixed(2));
 
   return {
     cafeAmount,
     eventServiceAmount,
     subtotal,
-    platformFeePercentage: PLATFORM_FEE_PERCENTAGE,
+    platformFeePercentage: 3,
     platformFee,
-    gstPercentage: GST_PERCENTAGE,
+    transactionFee,
+    gstPercentage: 18,
     gstAmount,
     total
   };

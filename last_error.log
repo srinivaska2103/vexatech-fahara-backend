@@ -1,4 +1,39 @@
-Error: An account with this email address already exists.
-    at Object.registerUser (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\authService.js:73:21)
+PrismaClientValidationError: 
+Invalid `prisma.favorites.findMany()` invocation in
+D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:4:39
+
+  1 const prisma = require('../config/prisma');
+  2 
+  3 const getFavorites = async (userId) => {
+→ 4   const favs = await prisma.favorites.findMany({
+        where: {
+          user_id: "eb652c36-4314-4d13-9654-2d920f72bc9c"
+        },
+        include: {
+          cafes: {
+            include: {
+              cafe_packages: true,
+              cafe_images: true,
+              ~~~~~~~~~~~
+      ?       bookings?: true,
+      ?       cafe_business_hours?: true,
+      ?       users?: true,
+      ?       favorites?: true,
+      ?       reviews?: true
+            }
+          }
+        },
+        orderBy: {
+          created_at: "desc"
+        }
+      })
+
+Unknown field `cafe_images` for include statement on model `cafes`. Available options are marked with ?.
+    at ar (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:10:1374)
+    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7929)
+    at zr.handleAndLogRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
+    at zr.request (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async register (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\authController.js:5:20)
+    at async a (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
+    at async Object.getFavorites (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:4:16)
+    at async getFavorites (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\favoriteController.js:5:18)

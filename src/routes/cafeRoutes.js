@@ -23,6 +23,7 @@ const cafeSchema = Joi.object({
   cover_image: Joi.string().uri().allow('', null),
   gallery: Joi.alternatives().try(Joi.array(), Joi.object()).allow(null),
   amenities: Joi.alternatives().try(Joi.array(), Joi.object()).allow(null),
+  discounts: Joi.alternatives().try(Joi.array(), Joi.object()).allow(null),
   business_hours: Joi.object().allow(null),
   status: Joi.string().valid('PENDING', 'ACTIVE', 'INACTIVE', 'DRAFT', 'APPROVED', 'REJECTED', 'SUSPENDED').default('PENDING'),
   category: Joi.string().allow('', null),
@@ -67,6 +68,11 @@ const packageSchema = Joi.object({
  */
 router.get('/', cafeController.getCafes);
 
+// --- Cafe Packages Routes (defined before /:id to prevent route clashing) ---
+router.get('/packages/:packageId', cafeController.getPackageById);
+router.put('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER'), validateRequest(packageSchema), cafeController.updatePackage);
+router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER'), cafeController.deletePackage);
+
 /**
  * @swagger
  * /api/v1/cafes/{id}:
@@ -85,6 +91,8 @@ router.get('/', cafeController.getCafes);
  *         description: Cafe details
  */
 router.get('/:id', cafeController.getCafeById);
+router.get('/:id/edit', cafeController.getCafeById);
+
 
 /**
  * @swagger
@@ -159,6 +167,7 @@ router.post('/', protect, authorizeRoles('CAFE_OWNER'), validateRequest(cafeSche
  *         description: Cafe updated
  */
 router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
+router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
 
 /**
  * @swagger
@@ -283,58 +292,7 @@ router.post('/:cafeId/packages', protect, authorizeRoles('CAFE_OWNER'), validate
  *       200:
  *         description: Package details
  */
-router.get('/packages/:packageId', cafeController.getPackageById);
 
-/**
- * @swagger
- * /api/v1/cafes/packages/{packageId}:
- *   put:
- *     summary: Update a cafe package
- *     tags: [Cafes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: packageId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               package_name:
- *                 type: string
- *               price:
- *                 type: number
- *     responses:
- *       200:
- *         description: Package updated
- */
-router.put('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER'), validateRequest(packageSchema), cafeController.updatePackage);
-
-/**
- * @swagger
- * /api/v1/cafes/packages/{packageId}:
- *   delete:
- *     summary: Delete a cafe package
- *     tags: [Cafes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: packageId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Package deleted
- */
-router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER'), cafeController.deletePackage);
 
 // --- Payment Account & Bank Verification Routes ---
 router.get('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), cafeController.getPaymentAccount);

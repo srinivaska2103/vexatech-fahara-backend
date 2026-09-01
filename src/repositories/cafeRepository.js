@@ -5,6 +5,24 @@ const createCafe = async (cafeData) => {
   });
 };
 
+const sanitizeCafe = (cafe) => {
+  if (!cafe || typeof cafe !== 'object') return cafe;
+  const {
+    razorpay_account_id,
+    razorpay_linked_account_id,
+    razorpay_account_status,
+    payment_account_provider,
+    payment_account_id,
+    bank_account_last4,
+    bank_account_holder,
+    bank_ifsc,
+    bank_verified_at,
+    bank_verification_reference,
+    ...cleanCafe
+  } = cafe;
+  return cleanCafe;
+};
+
 const stitchMediaToCafes = async (cafes) => {
   if (!cafes) return cafes;
   
@@ -14,29 +32,31 @@ const stitchMediaToCafes = async (cafes) => {
   // Extract all package IDs
   const packageIds = [];
   cafesList.forEach(cafe => {
-    if (cafe.cafe_packages) {
+    if (cafe && cafe.cafe_packages) {
       cafe.cafe_packages.forEach(pkg => packageIds.push(pkg.id));
     }
   });
 
-  if (packageIds.length === 0) return cafes;
+  // Fetch media for all these packages if packageIds exist
+  let mediaMap = {};
+  if (packageIds.length > 0) {
+    const mediaList = await prisma.media.findMany({
+      where: {
+        owner_type: 'package',
+        owner_id: { in: packageIds }
+      }
+    });
 
-  // Fetch media for all these packages
-  const mediaList = await prisma.media.findMany({
-    where: {
-      owner_type: 'package',
-      owner_id: { in: packageIds }
-    }
-  });
+    mediaList.forEach(media => {
+      mediaMap[media.owner_id] = media.file_url;
+    });
+  }
 
-  // Create a map for quick lookup
-  const mediaMap = {};
-  mediaList.forEach(media => {
-    mediaMap[media.owner_id] = media.file_url;
-  });
+  // Attach cover_image to packages, compute reviews, and sanitize sensitive bank/payment fields
+  const processedList = cafesList.map(rawCafe => {
+    if (!rawCafe) return rawCafe;
+    const cafe = { ...rawCafe };
 
-  // Attach cover_image to packages and compute reviews
-  cafesList.forEach(cafe => {
     if (cafe.cafe_packages) {
       cafe.cafe_packages.forEach(pkg => {
         if (mediaMap[pkg.id]) {
@@ -59,10 +79,13 @@ const stitchMediaToCafes = async (cafes) => {
         cafe.average_rating = 0;
       }
     }
+
+    return sanitizeCafe(cafe);
   });
 
-  return isArray ? cafesList : cafesList[0];
+  return isArray ? processedList : processedList[0];
 };
+
 
 const findAllCafes = async (query = {}) => {
   const where = {};
@@ -70,9 +93,8 @@ const findAllCafes = async (query = {}) => {
   if (query.owner_id) {
     where.owner_id = query.owner_id;
   } else {
-    // For public customer UI searches, only show active cafes that have verified bank accounts
+    // For public customer UI searches, show active cafes
     where.status = { in: ['ACTIVE', 'APPROVED'] };
-    where.bank_verification_status = 'VERIFIED';
   }
 
   if (query.query) {
@@ -198,5 +220,6 @@ module.exports = {
   deleteCafe,
   updateCafeBusinessHours,
   countCafesByOwner,
+  sanitizeCafe,
 };
 

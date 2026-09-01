@@ -60,6 +60,11 @@ const getBookingById = async (id) => {
 
   if (!booking) return null;
 
+  if (booking.cafes) {
+    const cafeRepository = require('./cafeRepository');
+    booking.cafes = cafeRepository.sanitizeCafe(booking.cafes);
+  }
+
   // Manually fetch package and event service if they exist (since relations might not be defined in Prisma schema)
   if (booking.package_id) {
     booking.packages = await prisma.cafe_packages.findUnique({
@@ -74,8 +79,15 @@ const getBookingById = async (id) => {
         users: { 
           select: { 
             name: true,
+            email: true,
+            phone: true,
             event_management_profiles: {
-              select: { company_name: true }
+              select: { 
+                company_name: true,
+                business_email: true,
+                business_phone: true,
+                alternate_phone: true
+              }
             }
           } 
         } // Event Company
@@ -147,13 +159,33 @@ const getBookingsByCafeOwner = async (ownerId, userRole = 'CAFE_OWNER') => {
   });
 
 
-  // Attach packages
+  // Attach packages and event services with user & event management profile details
   for (const b of bookings) {
     if (b.package_id) {
       b.packages = await prisma.cafe_packages.findUnique({ where: { id: b.package_id } });
     }
     if (b.event_service_id) {
-      b.event_services = await prisma.event_services.findUnique({ where: { id: b.event_service_id } });
+      b.event_services = await prisma.event_services.findUnique({ 
+        where: { id: b.event_service_id },
+        include: {
+          users: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              event_management_profiles: {
+                select: {
+                  company_name: true,
+                  business_email: true,
+                  business_phone: true,
+                  alternate_phone: true
+                }
+              }
+            }
+          }
+        }
+      });
     }
   }
 
@@ -219,7 +251,24 @@ const getAllAdminBookings = async (query = {}) => {
     if (b.event_service_id) {
       b.event_services = await prisma.event_services.findUnique({ 
         where: { id: b.event_service_id },
-        include: { users: { select: { name: true } } }
+        include: {
+          users: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              event_management_profiles: {
+                select: {
+                  company_name: true,
+                  business_email: true,
+                  business_phone: true,
+                  alternate_phone: true
+                }
+              }
+            }
+          }
+        }
       });
     }
   }

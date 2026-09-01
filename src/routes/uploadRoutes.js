@@ -36,7 +36,7 @@ const router = express.Router();
  *       400:
  *         description: No image provided
  */
-router.post('/', upload.single('image'), uploadController.uploadSingleImage);
+router.post('/', upload.any(), uploadController.uploadSingleImage);
 
 /**
  * @swagger

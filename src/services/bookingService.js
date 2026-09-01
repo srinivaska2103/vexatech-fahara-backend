@@ -19,6 +19,7 @@ const createBooking = async (userId, data) => {
     extra_person_amount = 0,
     discount = 0,
     special_request,
+    event_special_request,
   } = data;
 
   // 1. Validate Cafe & Bank Verification
@@ -145,11 +146,11 @@ const createBooking = async (userId, data) => {
 
   const subtotal = cafe_amount + food_amount + decoration_amount + extra_person_amount + event_service_amount - discount;
 
-  // Apply Fahara Service Charge (4%)
-  const fahara_service_charge = subtotal * 0.04;
+  // Apply Fahara Service Charge (3%)
+  const fahara_service_charge = subtotal * 0.03;
 
-  // Apply Transaction Fee (2% from total amount: subtotal + fahara_service_charge)
-  const transaction_fee = (subtotal + fahara_service_charge) * 0.02;
+  // Apply Transaction Fee (3% from subtotal)
+  const transaction_fee = subtotal * 0.03;
 
   // Apply GST (18% from transaction fee)
   const gst = transaction_fee * 0.18;
@@ -184,7 +185,8 @@ const createBooking = async (userId, data) => {
     total,
     payment_status: 'PENDING',
     booking_status: 'PENDING',
-    special_request,
+    special_request: special_request || '',
+    event_special_request: event_special_request || '',
   };
 
   const createdBooking = await bookingRepository.createBooking(bookingRecord);

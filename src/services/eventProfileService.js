@@ -193,17 +193,13 @@ const getEventPaymentAccount = async (userId) => {
   return {
     profileId: profile.id,
     userId: profile.user_id,
-    linkedAccountId: accountId || 'NOT_CREATED',
-    cashfreeVendorId: accountId || 'NOT_CREATED',
-    cashfreeVendorStatus: isVerified ? 'ACTIVE' : (profile.razorpay_account_status || 'PENDING'),
     bankVerificationStatus: profile.bank_verification_status || 'PENDING',
+    isVerified: isVerified,
     settlementStatus: settlementStatus,
     accountHolderName: profile.bank_account_holder || '',
     maskedBankAccount: profile.bank_account_last4 ? `XXXX XXXX ${profile.bank_account_last4}` : 'Not Configured',
     bankAccountLast4: profile.bank_account_last4 || null,
-    ifsc: profile.bank_ifsc || 'Not Configured',
     bankVerifiedAt: profile.bank_verified_at || null,
-    verificationReference: profile.bank_verification_reference || null
   };
 };
 

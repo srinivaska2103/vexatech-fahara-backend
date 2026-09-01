@@ -33,8 +33,15 @@ if (process.env.AUTO_MIGRATE_DB !== 'false') {
   }
 }
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+const http = require('http');
+const { initSocket } = require('./config/socket');
+
+const server = http.createServer(app);
+
+initSocket(server);
+
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT} with WebSockets enabled`);
   // Start scheduled jobs
   startBookingStatusCron();
 });

@@ -37,6 +37,7 @@ router.post('/admin/broadcast', authorizeRoles('ADMIN'), notificationController.
 
 router.get('/', notificationController.getNotifications);
 router.post('/send', notificationController.sendMessage);
+router.post('/send-message', notificationController.sendMessage);
 router.patch('/read-all', notificationController.markAllAsRead);
 router.get('/:id', notificationController.getNotificationById);
 router.patch('/:id/read', notificationController.markAsRead);

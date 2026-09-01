@@ -321,7 +321,7 @@ const prisma = require('../config/prisma');
 const getCafePaymentAccount = async (userId, cafeId) => {
   let cafe;
   if (cafeId && cafeId !== 'my-cafe') {
-    cafe = await getCafeById(cafeId);
+    cafe = await prisma.cafes.findUnique({ where: { id: cafeId } });
   } else {
     cafe = await prisma.cafes.findFirst({
       where: { owner_id: userId }
@@ -362,19 +362,13 @@ const getCafePaymentAccount = async (userId, cafeId) => {
 
   return {
     cafeId: cafe.id,
-    linkedAccountId: accountId || 'NOT_CREATED',
-    cashfreeVendorId: accountId || 'NOT_CREATED',
-    cashfreeVendorStatus: isVerified ? 'ACTIVE' : (cafe.razorpay_account_status || 'PENDING'),
     bankVerificationStatus: cafe.bank_verification_status || 'PENDING',
+    isVerified: isVerified,
     settlementStatus: settlementStatus,
     accountHolderName: cafe.bank_account_holder || '',
     maskedBankAccount: cafe.bank_account_last4 ? `XXXX XXXX ${cafe.bank_account_last4}` : 'Not Configured',
     bankAccountLast4: cafe.bank_account_last4 || null,
-    ifsc: cafe.bank_ifsc || 'Not Configured',
-    email: user?.email || '',
-    phone: user?.phone || '',
     bankVerifiedAt: cafe.bank_verified_at || null,
-    verificationReference: cafe.bank_verification_reference || null
   };
 };
 

@@ -89,7 +89,61 @@ const updateAggregatesAfterChange = async (cafeId, eventServiceId) => {
 
 const getOwnerReviews = async (ownerId, queryParams) => {
   const reviews = await reviewRepository.getReviewsByOwnerId(ownerId, queryParams);
-  return { data: reviews };
+  const prisma = require('../config/prisma');
+
+  const formattedReviews = await Promise.all(reviews.map(async r => {
+    let bNum = r.bookings?.booking_number;
+    let bId = r.booking_id;
+
+    if (!bNum && r.customer_id && (r.cafe_id || r.event_service_id)) {
+      try {
+        const whereCond = { customer_id: r.customer_id };
+        if (r.cafe_id) whereCond.cafe_id = r.cafe_id;
+        else if (r.event_service_id) whereCond.event_service_id = r.event_service_id;
+
+        const fallbackBooking = await prisma.bookings.findFirst({
+          where: whereCond,
+          select: { id: true, booking_number: true },
+          orderBy: { created_at: 'desc' }
+        });
+        if (fallbackBooking) {
+          bNum = fallbackBooking.booking_number;
+          bId = fallbackBooking.id;
+        }
+      } catch (e) {}
+    }
+
+    const finalBookingDisplay = bNum || (bId ? `#${String(bId).slice(0, 8).toUpperCase()}` : 'N/A');
+
+    return {
+      id: r.id,
+      booking_id: bId,
+      booking_number: finalBookingDisplay,
+      customer_id: r.customer_id,
+      customer_name: r.users?.name || 'Valued Customer',
+      user_name: r.users?.name || 'Valued Customer',
+      customer_email: r.users?.email || '',
+      customer_phone: r.users?.phone || '',
+      profile_image: r.users?.profile_image,
+      rating: r.rating || 5,
+      review: r.review,
+      comment: r.review,
+      content: r.review,
+      review_text: r.review,
+      reply: r.reply,
+      owner_reply: r.reply,
+      reply_text: r.reply,
+      reply_at: r.reply_at,
+      service_name: r.cafes?.name || r.event_services?.service_name || r.event_services?.category || 'Cafe Venue',
+      category: r.event_services?.category || 'Cafe Service',
+      cafe_name: r.cafes?.name || 'Cafe Venue',
+      event_service_name: r.event_services?.service_name,
+      created_at: r.created_at,
+      createdAt: r.created_at
+    };
+  }));
+
+  return { data: formattedReviews };
 };
 
 const getOwnerReviewAnalytics = async (ownerId) => {
@@ -175,13 +229,35 @@ const deleteReply = async (ownerId, reviewId) => {
 };
 
 const getReviewById = async (reviewId) => {
-  const review = await reviewRepository.getReviewById(reviewId);
-  if (!review) {
+  const r = await reviewRepository.getReviewById(reviewId);
+  if (!r) {
     const error = new Error('Review not found');
     error.statusCode = 404;
     throw error;
   }
-  return { data: review };
+  const formattedReview = {
+    ...r,
+    customer_id: r.customer_id,
+    customer_name: r.users?.name || 'Valued Customer',
+    user_name: r.users?.name || 'Valued Customer',
+    customer_email: r.users?.email || '',
+    customer_phone: r.users?.phone || '',
+    profile_image: r.users?.profile_image,
+    rating: r.rating || 5,
+    review: r.review,
+    comment: r.review,
+    content: r.review,
+    review_text: r.review,
+    reply: r.reply,
+    owner_reply: r.reply,
+    reply_text: r.reply,
+    reply_at: r.reply_at,
+    service_name: r.event_services?.service_name || r.event_services?.category || r.cafes?.name || 'Event Service',
+    category: r.event_services?.category || 'Event Service',
+    cafe_name: r.cafes?.name,
+    booking_number: r.bookings?.booking_number || 'N/A'
+  };
+  return { data: formattedReview };
 };
 
 const getAdminReviews = async (query) => {

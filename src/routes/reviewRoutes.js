@@ -8,6 +8,7 @@ const { authorizeRoles } = require('../middlewares/roleMiddleware');
 const router = express.Router();
 
 const addReviewSchema = Joi.object({
+  booking_id: Joi.string().uuid().optional(),
   cafe_id: Joi.string().uuid().optional(),
   event_service_id: Joi.string().uuid().optional(),
   rating: Joi.number().integer().min(1).max(5).required(),
@@ -63,6 +64,7 @@ const addReviewSchema = Joi.object({
  *         description: Unauthorized (Must have a completed booking)
  */
 router.post('/', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'), validateRequest(addReviewSchema), reviewController.addReview);
+router.get('/', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN', 'CUSTOMER'), reviewController.getOwnerReviews);
 
 /**
  * @swagger

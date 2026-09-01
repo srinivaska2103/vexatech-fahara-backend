@@ -88,22 +88,33 @@ const updateEventServiceReviewAggregates = async (eventServiceId, totalReviews, 
 
 const getReviewsByOwnerId = async (ownerId, filters = {}) => {
   const whereClause = {
-    cafes: { owner_id: ownerId }
+    OR: [
+      { cafes: { owner_id: ownerId } },
+      { event_services: { user_id: ownerId } }
+    ]
   };
   
   if (filters.search) {
-    whereClause.OR = [
-      { review: { contains: filters.search, mode: 'insensitive' } },
-      { users: { name: { contains: filters.search, mode: 'insensitive' } } },
-      { cafes: { name: { contains: filters.search, mode: 'insensitive' } } }
+    whereClause.AND = [
+      {
+        OR: [
+          { review: { contains: filters.search, mode: 'insensitive' } },
+          { users: { name: { contains: filters.search, mode: 'insensitive' } } },
+          { cafes: { name: { contains: filters.search, mode: 'insensitive' } } },
+          { event_services: { service_name: { contains: filters.search, mode: 'insensitive' } } }
+        ]
+      }
     ];
   }
   
-  if (filters.rating) {
-    whereClause.rating = parseInt(filters.rating);
+  if (filters.rating && filters.rating !== 'all') {
+    const parsedRating = parseInt(filters.rating);
+    if (!isNaN(parsedRating)) {
+      whereClause.rating = parsedRating;
+    }
   }
   
-  if (filters.replyStatus) {
+  if (filters.replyStatus && filters.replyStatus !== 'all') {
     if (filters.replyStatus === 'replied') {
       whereClause.reply = { not: null };
     } else if (filters.replyStatus === 'unreplied') {
@@ -111,8 +122,7 @@ const getReviewsByOwnerId = async (ownerId, filters = {}) => {
     }
   }
 
-  // Handle date filters if needed (assuming dateRange can be 'today', 'week', 'month', 'year')
-  if (filters.dateRange) {
+  if (filters.dateRange && filters.dateRange !== 'all') {
     const now = new Date();
     let startDate = new Date();
     
@@ -124,16 +134,19 @@ const getReviewsByOwnerId = async (ownerId, filters = {}) => {
         startDate.setDate(now.getDate() - 7);
         break;
       case 'month':
+      case 'last30':
         startDate.setMonth(now.getMonth() - 1);
         break;
+      case 'last90':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
       case 'year':
+      case 'thisYear':
         startDate.setFullYear(now.getFullYear() - 1);
         break;
     }
     
-    if (filters.dateRange !== 'all') {
-      whereClause.created_at = { gte: startDate };
-    }
+    whereClause.created_at = { gte: startDate };
   }
 
   return await prisma.reviews.findMany({
@@ -141,6 +154,7 @@ const getReviewsByOwnerId = async (ownerId, filters = {}) => {
     include: {
       users: { select: { name: true, profile_image: true } },
       cafes: { select: { name: true } },
+      event_services: { select: { service_name: true, category: true } },
       bookings: { select: { id: true, booking_number: true, booking_date: true } }
     },
     orderBy: { created_at: 'desc' }

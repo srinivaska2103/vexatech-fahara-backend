@@ -1,6 +1,7 @@
 const uploadSingleImage = (req, res, next) => {
   try {
-    if (!req.file) {
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
       const error = new Error('No image provided');
       error.statusCode = 400;
       throw error;
@@ -9,8 +10,8 @@ const uploadSingleImage = (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        url: req.file.path,
-        filename: req.file.filename,
+        url: file.path,
+        filename: file.filename,
       }
     });
   } catch (error) {

@@ -36,12 +36,38 @@ const maskBankAccount = (accountNumber) => {
 
 const sanitizeUser = (user, reqUser) => {
   if (!user) return user;
-  const { password_hash, ...safeUser } = user;
-  
-  if (safeUser.account_number && reqUser?.role !== 'ADMIN') {
-    safeUser.account_number = maskBankAccount(safeUser.account_number);
+  const { 
+    password_hash, 
+    account_number, 
+    ifsc_code, 
+    bank_name, 
+    bank_account_holder, 
+    bank_ifsc, 
+    bank_account_last4, 
+    bank_verified_at, 
+    bank_verification_reference, 
+    razorpay_account_id, 
+    razorpay_linked_account_id, 
+    ...safeUser 
+  } = user;
+
+  const roleName = reqUser?.roles?.name || reqUser?.role;
+  if (roleName === 'ADMIN') {
+    return {
+      ...safeUser,
+      account_number,
+      ifsc_code,
+      bank_name,
+      bank_account_holder,
+      bank_ifsc,
+      bank_account_last4,
+      bank_verified_at,
+      bank_verification_reference,
+      razorpay_account_id,
+      razorpay_linked_account_id
+    };
   }
-  
+
   return safeUser;
 };
 

@@ -108,13 +108,13 @@ const notifyBookingCreated = async (booking) => {
   const extraPersonAmount = Number(booking.extra_person_amount || 0);
   const discount = Number(booking.discount || 0);
   const subtotal = Number(booking.subtotal || (cafeAmount + eventServiceAmount + foodAmount + decorationAmount + extraPersonAmount - discount));
-  const faharaCharge = Number(booking.fahara_service_charge || (subtotal * 0.04));
-  const transactionFee = Number(booking.transaction_fee || ((subtotal + faharaCharge) * 0.02));
+  const faharaCharge = Number(booking.fahara_service_charge || (subtotal * 0.03));
+  const transactionFee = Number(booking.transaction_fee || (subtotal * 0.03));
   const gst = Number(booking.gst || (transactionFee * 0.18));
   const total = Number(booking.total || (subtotal + faharaCharge + transactionFee + gst));
 
-  // Cafe owner receives: cafe_amount + food + decoration + extra_person - discount + fahara charge
-  const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount + faharaCharge;
+  // Cafe owner portion: cafe_amount + food + decoration + extra_person - discount
+  const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount;
 
   // ── Customer summary: full breakdown ──
   const customerSummaryItems = [
@@ -134,8 +134,8 @@ const notifyBookingCreated = async (booking) => {
   }
   if (discount > 0) customerSummaryItems.push({ label: 'Discount', value: `-₹${discount.toFixed(2)}` });
   customerSummaryItems.push({ label: 'Subtotal', value: `₹${subtotal.toFixed(2)}` });
-  customerSummaryItems.push({ label: 'Fahara Platform Fee (4%)', value: `₹${faharaCharge.toFixed(2)}` });
-  customerSummaryItems.push({ label: 'Transaction Fee (2%)', value: `₹${transactionFee.toFixed(2)}` });
+  customerSummaryItems.push({ label: 'Platform Fee (3%)', value: `₹${faharaCharge.toFixed(2)}` });
+  customerSummaryItems.push({ label: 'Transaction Fee (3%)', value: `₹${transactionFee.toFixed(2)}` });
   customerSummaryItems.push({ label: 'GST (18% on Txn Fee)', value: `₹${gst.toFixed(2)}` });
   customerSummaryItems.push({ label: 'Grand Total', value: `₹${total.toFixed(2)}`, isHighlight: true });
 
@@ -216,11 +216,11 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
   const extraPersonAmount = Number(booking.extra_person_amount || 0);
   const discount = Number(booking.discount || 0);
   const subtotal = Number(booking.subtotal || (cafeAmount + eventServiceAmount + foodAmount + decorationAmount + extraPersonAmount - discount));
-  const faharaCharge = Number(booking.fahara_service_charge || (subtotal * 0.04));
-  const transactionFee = Number(booking.transaction_fee || ((subtotal + faharaCharge) * 0.02));
+  const faharaCharge = Number(booking.fahara_service_charge || (subtotal * 0.03));
+  const transactionFee = Number(booking.transaction_fee || (subtotal * 0.03));
   const gst = Number(booking.gst || (transactionFee * 0.18));
   const total = Number(booking.total || (subtotal + faharaCharge + transactionFee + gst));
-  const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount + faharaCharge;
+  const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount;
 
   const baseSummaryItems = [
     { label: 'Booking No', value: booking.booking_number, icon: '🎫' },
@@ -242,8 +242,8 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
     ] : []),
     ...(discount > 0 ? [{ label: 'Discount', value: `-₹${discount.toFixed(2)}` }] : []),
     { label: 'Subtotal', value: `₹${subtotal.toFixed(2)}` },
-    { label: 'Fahara Platform Fee (4%)', value: `₹${faharaCharge.toFixed(2)}` },
-    { label: 'Transaction Fee (2%)', value: `₹${transactionFee.toFixed(2)}` },
+    { label: 'Platform Fee (3%)', value: `₹${faharaCharge.toFixed(2)}` },
+    { label: 'Transaction Fee (3%)', value: `₹${transactionFee.toFixed(2)}` },
     { label: 'GST (18% on Txn Fee)', value: `₹${gst.toFixed(2)}` },
     { label: 'Grand Total', value: `₹${total.toFixed(2)}`, isHighlight: true },
   ];
@@ -392,9 +392,12 @@ const getNotifications = async (userId, filters) => {
       title: n.title,
       message: n.message,
       type: n.notification_type || 'INFO',
+      notification_type: n.notification_type || 'INFO',
+      channel: n.channel || 'IN_APP',
       status: n.status,
       is_read: n.read_at !== null,
       created_at: n.created_at,
+      sent_at: n.sent_at || n.created_at,
       link: n.booking_id ? `/owner/bookings/${n.booking_id}` : null
     }))
   };
@@ -464,28 +467,61 @@ const sendMessage = async (ownerId, data) => {
     throw new Error('No recipients specified');
   }
 
-  // Find users for recipients
-  const users = await userRepository.findUsersByIds(recipients);
+  // 1. Save broadcast record for the sender / cafe owner so it appears under their Sent Email Broadcasts tab
+  await notificationRepository.saveNotification({
+    user_id: ownerId,
+    title: subject,
+    message: message,
+    notification_type: 'CUSTOM_MESSAGE',
+    channel: 'EMAIL',
+    status: 'SENT',
+    sent_at: new Date(),
+  });
 
-  for (const user of users) {
-    // Send email using existing emailService
-    await emailService.sendEmail(
-      user.email,
-      subject,
-      message,
-      `<p>Hi ${user.name || 'User'},</p><p>${message}</p>`
-    );
+  // 2. Resolve target recipient users
+  let users = [];
+  if (recipients.includes('all-diners') || recipients.includes('all')) {
+    const prisma = require('../config/prisma');
+    users = await prisma.users.findMany({});
+  } else {
+    const validUuids = recipients.filter(r => typeof r === 'string' && r.length === 36 && r.includes('-'));
+    const emails = recipients.filter(r => typeof r === 'string' && r.includes('@'));
     
-    // Save record to DB for the user
-    await notificationRepository.saveNotification({
-      user_id: user.id,
-      title: subject,
-      message: message,
-      notification_type: 'CUSTOM_MESSAGE',
-      channel: 'EMAIL',
-      status: 'SENT',
-      sent_at: new Date(),
+    const prisma = require('../config/prisma');
+    users = await prisma.users.findMany({
+      where: {
+        OR: [
+          validUuids.length > 0 ? { id: { in: validUuids } } : undefined,
+          emails.length > 0 ? { email: { in: emails } } : undefined,
+        ].filter(Boolean)
+      }
     });
+  }
+
+  // 3. Send email to each recipient
+  for (const user of users) {
+    try {
+      await emailService.sendEmail(
+        user.email,
+        subject,
+        message,
+        `<p>Hi ${user.name || 'Valued Diner'},</p><p>${message}</p>`
+      );
+      
+      if (user.id !== ownerId) {
+        await notificationRepository.saveNotification({
+          user_id: user.id,
+          title: subject,
+          message: message,
+          notification_type: 'CUSTOM_MESSAGE',
+          channel: 'EMAIL',
+          status: 'SENT',
+          sent_at: new Date(),
+        });
+      }
+    } catch (err) {
+      console.error(`Failed to send email broadcast to ${user.email}:`, err.message);
+    }
   }
 
   return { success: true, message: 'Message sent successfully to all recipients.' };

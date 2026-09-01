@@ -1,8 +1,16 @@
 const prisma = require('../config/prisma');
+const { emitNotificationToUser } = require('../config/socket');
+
 const saveNotification = async (data) => {
-  return await prisma.notifications.create({
+  const notification = await prisma.notifications.create({
     data,
   });
+
+  if (data?.user_id) {
+    emitNotificationToUser(data.user_id, notification);
+  }
+
+  return notification;
 };
 
 const getNotifications = async (userId, filters = {}) => {

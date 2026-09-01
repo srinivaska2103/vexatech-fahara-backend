@@ -1527,7 +1527,7 @@ const getAdminRevenueSummary = async (query) => {
     // Direct Database Fields
     const gv = Number(b.total || p.amount || 0);
     const subtotalVal = Number(b.subtotal || 0);
-    const platformRev = Number(b.fahara_service_charge || p.platform_fee || (subtotalVal * 0.04));
+    const platformRev = Number(b.fahara_service_charge || p.platform_fee || (subtotalVal * 0.03));
     const tax = Number(b.gst ?? p.gst_amount ?? 0);
     const rawTxnFee = Number(b.transaction_fee || 0);
     const computedTxnFee = rawTxnFee > 0 ? rawTxnFee : (gv > 0 && gv > (subtotalVal + platformRev + tax) ? (gv - subtotalVal - platformRev - tax) : 0);

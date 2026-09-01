@@ -97,7 +97,6 @@ const getIconNameByLabel = (label = '') => {
 };
 
 const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = null, ctaLink = null, ctaText = 'View Booking Details', status = null }) => {
-  // Separate metadata items vs financial items
   const metaLabels = ['Booking No', 'Cafe', 'Date', 'Time', 'Guests', 'Event Service Package'];
   const metaItems = summaryItems.filter(item => metaLabels.includes(item.label));
   const financialItems = summaryItems.filter(item => !metaLabels.includes(item.label));
@@ -154,7 +153,6 @@ const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = 
     </div>
   ` : '';
 
-  // Interactive Downloads & Quick Actions Bar
   const targetId = bookingId || (summaryItems.find(i => i.label === 'Booking No')?.value);
   const actionToolbarHtml = targetId ? `
     <div style="background-color: #FAF6F0; border: 1px solid #E8DED5; border-radius: 14px; padding: 18px; margin: 28px 0; text-align: center;">
@@ -250,8 +248,8 @@ const getOtpTemplate = (name, otp) => {
   return generateBaseTemplate({ 
     title: 'Security Verification Code', 
     bodyHtml,
-    ctaLink: `${FRONTEND_URL}/login`,
-    ctaText: 'Verify Account & Log In'
+    ctaLink: `${FRONTEND_URL}/customer/profile`,
+    ctaText: 'Verify Account & Profile'
   });
 };
 
@@ -265,7 +263,7 @@ const getResetPasswordTemplate = (name, resetLink) => {
   return generateBaseTemplate({ 
     title: 'Reset Account Password', 
     bodyHtml,
-    ctaLink: resetLink,
+    ctaLink: resetLink || `${FRONTEND_URL}/customer/profile`,
     ctaText: 'Set New Password'
   });
 };
@@ -289,9 +287,13 @@ const getBookingRequestCustomerTemplate = (name, bookingId, summaryItems, bookin
   });
 };
 
-// 3. Booking Request (Cafe Owner / Admin)
-const getBookingRequestOwnerTemplate = (ownerName, bookingId, customerName, summaryItems, bookingDbId = null) => {
+// 3. Booking Request (Cafe Owner / Event Manager)
+const getBookingRequestOwnerTemplate = (ownerName, bookingId, customerName, summaryItems, bookingDbId = null, isEventManager = false) => {
   const targetId = bookingDbId || bookingId;
+  const ctaUrl = isEventManager 
+    ? `${EM_FRONTEND_URL}/event/bookings/${targetId}`
+    : `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`;
+
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${ownerName},</p>
     <p style="font-size: 15px; color: #555555;">You have received a new booking request (<strong style="color: #6F4E37;">#${bookingId}</strong>) from <strong>${customerName}</strong>.</p>
@@ -303,7 +305,7 @@ const getBookingRequestOwnerTemplate = (ownerName, bookingId, customerName, summ
     summaryItems, 
     bookingId: targetId,
     status: 'PENDING',
-    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings/${targetId}`, 
+    ctaLink: ctaUrl, 
     ctaText: 'Manage Booking in Dashboard' 
   });
 };
@@ -329,9 +331,13 @@ const getPaymentSuccessfulCustomerTemplate = (name, bookingId, summaryItems, boo
   });
 };
 
-// 4. Payment Successful (Cafe Owner / Admin)
-const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summaryItems, bookingDbId = null) => {
+// 4. Payment Successful (Cafe Owner / Event Manager)
+const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summaryItems, bookingDbId = null, isEventManager = false) => {
   const targetId = bookingDbId || bookingId;
+  const ctaUrl = isEventManager 
+    ? `${EM_FRONTEND_URL}/event/bookings/${targetId}` 
+    : `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`;
+
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${ownerName},</p>
     <p style="font-size: 15px; color: #555555;">Payment of <strong style="color: #059669; font-size: 18px;">${amount}</strong> has been received for booking <strong style="color: #6F4E37;">#${bookingId}</strong>.</p>
@@ -343,8 +349,8 @@ const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summary
     summaryItems, 
     bookingId: targetId,
     status: 'PAID',
-    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings/${targetId}`, 
-    ctaText: 'View Owner Dashboard' 
+    ctaLink: ctaUrl, 
+    ctaText: 'View Dashboard' 
   });
 };
 
@@ -370,8 +376,12 @@ const getBookingConfirmedCustomerTemplate = (name, bookingId, summaryItems, book
 };
 
 // 5. Booking Confirmed (Admin / Event Management)
-const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bookingDbId = null) => {
+const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bookingDbId = null, isEventManager = false) => {
   const targetId = bookingDbId || bookingId;
+  const ctaUrl = isEventManager 
+    ? `${EM_FRONTEND_URL}/event/bookings/${targetId}` 
+    : `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`;
+
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${adminName},</p>
     <p style="font-size: 15px; color: #555555;">Booking <strong style="color: #6F4E37;">#${bookingId}</strong> has been officially confirmed.</p>
@@ -383,7 +393,7 @@ const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bo
     summaryItems, 
     bookingId: targetId,
     status: 'CONFIRMED',
-    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings/${targetId}`, 
+    ctaLink: ctaUrl, 
     ctaText: 'View Dashboard' 
   });
 };
@@ -410,9 +420,13 @@ const getBookingCancelledCustomerTemplate = (name, bookingId, reason, summaryIte
   });
 };
 
-// 6. Booking Cancelled (Cafe Owner / Admin)
-const getBookingCancelledOwnerTemplate = (ownerName, bookingId, cancelledBy, reason, summaryItems, bookingDbId = null) => {
+// 6. Booking Cancelled (Cafe Owner / Event Manager)
+const getBookingCancelledOwnerTemplate = (ownerName, bookingId, cancelledBy, reason, summaryItems, bookingDbId = null, isEventManager = false) => {
   const targetId = bookingDbId || bookingId;
+  const ctaUrl = isEventManager 
+    ? `${EM_FRONTEND_URL}/event/bookings` 
+    : `${CAFE_FRONTEND_URL}/owner/bookings`;
+
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${ownerName},</p>
     <p style="font-size: 15px; color: #555555;">Booking <strong style="color: #6F4E37;">#${bookingId}</strong> was <span style="color: #DC2626; font-weight: 700;">cancelled</span> by ${cancelledBy}.</p>
@@ -424,7 +438,7 @@ const getBookingCancelledOwnerTemplate = (ownerName, bookingId, cancelledBy, rea
     summaryItems, 
     bookingId: targetId,
     status: 'CANCELLED',
-    ctaLink: `${CAFE_FRONTEND_URL}/event/bookings`,
+    ctaLink: ctaUrl,
     ctaText: 'View Owner Bookings'
   });
 };

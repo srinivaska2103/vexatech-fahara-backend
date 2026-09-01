@@ -21,6 +21,7 @@ const bookingSchema = Joi.object({
   extra_person_amount: Joi.number().min(0).default(0),
   discount: Joi.number().min(0).default(0),
   special_request: Joi.string().allow('', null),
+  event_special_request: Joi.string().allow('', null),
 });
 
 const statusSchema = Joi.object({

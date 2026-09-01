@@ -48,15 +48,15 @@ const getSummary = async (ownerId, role) => {
     const cancelledBookings = bookings.filter(b => (b.booking_status || '').toUpperCase() === 'CANCELLED').length;
     const pendingVerifications = cafes.filter(c => c.status === 'PENDING').length + pendingProfilesCount;
     
-    // Sum actual fahara_service_charge stored per completed/paid/confirmed booking, with 4% subtotal fallback
-    const faharaRevenue = bookings
-      .filter(isSuccessful)
-      .reduce((sum, b) => {
-        const storedFee = Number(b.fahara_service_charge || 0);
-        if (storedFee > 0) return sum + storedFee;
-        const sub = Number(b.subtotal || 0);
-        return sum + Number((sub * 0.04).toFixed(2));
-      }, 0);
+        // Sum actual fahara_service_charge stored per completed/paid/confirmed booking, with 3% subtotal fallback
+        const faharaRevenue = bookings
+          .filter(isSuccessful)
+          .reduce((sum, b) => {
+            const storedFee = Number(b.fahara_service_charge || 0);
+            if (storedFee > 0) return sum + storedFee;
+            const sub = Number(b.subtotal || 0);
+            return sum + Number((sub * 0.03).toFixed(2));
+          }, 0);
 
     const growthData = [];
     for (let i = 3; i >= 0; i--) {
@@ -257,7 +257,24 @@ const getSummary = async (ownerId, role) => {
   const top_events = Object.values(eventStats)
     .map(e => ({ title: eventNameMap[e.id] || 'Unknown', tickets_sold: e.tickets_sold, revenue: e.revenue }))
     .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5);
+  // Calculate Peak Dining Time Slots from real start_time or created_at
+  const timeSlotCounts = { morning: 0, afternoon: 0, evening: 0, night: 0 };
+  validBookings.forEach(b => {
+    let hour = 12;
+    if (b.start_time) {
+      const st = new Date(b.start_time);
+      if (!isNaN(st.getTime())) {
+        hour = st.getUTCHours();
+      }
+    } else if (b.created_at) {
+      hour = new Date(b.created_at).getHours();
+    }
+
+    if (hour >= 8 && hour < 12) timeSlotCounts.morning++;
+    else if (hour >= 12 && hour < 16) timeSlotCounts.afternoon++;
+    else if (hour >= 16 && hour < 20) timeSlotCounts.evening++;
+    else timeSlotCounts.night++;
+  });
 
   return {
     total_revenue: totalRevenue,
@@ -283,6 +300,12 @@ const getSummary = async (ownerId, role) => {
     top_events: top_events,
     top_customers: top_customers,
     todays_bookings: todaysBookings.length,
+    peak_time_slots: [
+      { slot: 'Morning (8:00 AM - 12:00 PM)', count: timeSlotCounts.morning },
+      { slot: 'Afternoon Peak (12:00 PM - 4:00 PM)', count: timeSlotCounts.afternoon },
+      { slot: 'Evening (4:00 PM - 8:00 PM)', count: timeSlotCounts.evening },
+      { slot: 'Night (8:00 PM - 11:00 PM)', count: timeSlotCounts.night },
+    ],
     ...adminExtra
   };
 };
