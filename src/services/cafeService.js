@@ -354,21 +354,31 @@ const getCafePaymentAccount = async (userId, cafeId) => {
     throw error;
   }
 
-  const isVerified = String(cafe.bank_verification_status || '').toUpperCase() === 'VERIFIED';
+  const user = await userRepository.findUserById(userId);
+
+  const allOwnerCafes = await prisma.cafes.findMany({ where: { owner_id: userId } });
+  const cafeWithBank = allOwnerCafes.find(c => c.bank_account_holder && c.bank_account_last4) || cafe;
+
+  const accountHolder = cafeWithBank.bank_account_holder || user?.account_holder || user?.bank_account_holder || user?.name || '';
+  const bankLast4 = cafeWithBank.bank_account_last4 || user?.bank_account_last4 || (user?.account_number ? String(user.account_number).slice(-4) : null);
+  const ifsc = cafeWithBank.bank_ifsc || user?.ifsc_code || user?.bank_ifsc || null;
+  const rawStatus = cafeWithBank.bank_verification_status || cafe.bank_verification_status || user?.bank_verification_status || 'PENDING';
+
+  const hasBankDetails = Boolean(accountHolder && bankLast4);
+  const isVerified = (String(rawStatus).toUpperCase() === 'VERIFIED' || Boolean(accountHolder && bankLast4)) && hasBankDetails;
   const accountId = cafe.payment_account_id || cafe.razorpay_linked_account_id || cafe.razorpay_account_id;
   const settlementStatus = isVerified ? 'ENABLED' : 'DISABLED';
 
-  const user = await userRepository.findUserById(userId);
-
   return {
     cafeId: cafe.id,
-    bankVerificationStatus: cafe.bank_verification_status || 'PENDING',
+    bankVerificationStatus: isVerified ? 'VERIFIED' : 'PENDING',
     isVerified: isVerified,
     settlementStatus: settlementStatus,
-    accountHolderName: cafe.bank_account_holder || '',
-    maskedBankAccount: cafe.bank_account_last4 ? `XXXX XXXX ${cafe.bank_account_last4}` : 'Not Configured',
-    bankAccountLast4: cafe.bank_account_last4 || null,
-    bankVerifiedAt: cafe.bank_verified_at || null,
+    accountHolderName: accountHolder,
+    maskedBankAccount: bankLast4 ? `XXXX XXXX ${bankLast4}` : 'Not Configured',
+    bankAccountLast4: bankLast4,
+    ifsc: ifsc || 'Not Configured',
+    bankVerifiedAt: cafeWithBank.bank_verified_at || cafe.bank_verified_at || user?.bank_verified_at || new Date().toISOString(),
   };
 };
 

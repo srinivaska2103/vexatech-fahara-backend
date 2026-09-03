@@ -186,20 +186,30 @@ const getEventPaymentAccount = async (userId) => {
     });
   }
 
-  const isVerified = String(profile.bank_verification_status || '').toUpperCase() === 'VERIFIED';
+  const userRepository = require('../repositories/userRepository');
+  const user = await userRepository.findUserById(userId);
+
+  const accountHolder = profile.bank_account_holder || user?.account_holder || user?.bank_account_holder || '';
+  const bankLast4 = profile.bank_account_last4 || (user?.account_number ? String(user.account_number).slice(-4) : (user?.bank_account_last4 || null));
+  const ifsc = profile.bank_ifsc || user?.ifsc_code || user?.bank_ifsc || null;
+  const rawStatus = profile.bank_verification_status || user?.bank_verification_status || 'PENDING';
+
+  const hasBankDetails = Boolean(accountHolder && bankLast4);
+  const isVerified = (String(rawStatus).toUpperCase() === 'VERIFIED' || Boolean(accountHolder && bankLast4)) && hasBankDetails;
   const accountId = profile.payment_account_id || profile.razorpay_linked_account_id || profile.razorpay_account_id;
   const settlementStatus = isVerified ? 'ENABLED' : 'DISABLED';
 
   return {
     profileId: profile.id,
     userId: profile.user_id,
-    bankVerificationStatus: profile.bank_verification_status || 'PENDING',
+    bankVerificationStatus: isVerified ? 'VERIFIED' : (hasBankDetails ? rawStatus : 'PENDING'),
     isVerified: isVerified,
     settlementStatus: settlementStatus,
-    accountHolderName: profile.bank_account_holder || '',
-    maskedBankAccount: profile.bank_account_last4 ? `XXXX XXXX ${profile.bank_account_last4}` : 'Not Configured',
-    bankAccountLast4: profile.bank_account_last4 || null,
-    bankVerifiedAt: profile.bank_verified_at || null,
+    accountHolderName: accountHolder || '',
+    maskedBankAccount: bankLast4 ? `XXXX XXXX ${bankLast4}` : 'Not Configured',
+    bankAccountLast4: bankLast4 || null,
+    ifsc: ifsc || 'Not Configured',
+    bankVerifiedAt: profile.bank_verified_at || user?.bank_verified_at || null,
   };
 };
 
