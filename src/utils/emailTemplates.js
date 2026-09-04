@@ -96,7 +96,7 @@ const getIconNameByLabel = (label = '') => {
   return 'ticket';
 };
 
-const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = null, ctaLink = null, ctaText = 'View Booking Details', status = null }) => {
+const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = null, ctaLink = null, ctaText = 'View Now!', status = null }) => {
   const metaLabels = ['Booking No', 'Cafe', 'Date', 'Time', 'Guests', 'Event Service Package'];
   const metaItems = summaryItems.filter(item => metaLabels.includes(item.label));
   const financialItems = summaryItems.filter(item => !metaLabels.includes(item.label));
@@ -153,29 +153,6 @@ const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = 
     </div>
   ` : '';
 
-  const targetId = bookingId || (summaryItems.find(i => i.label === 'Booking No')?.value);
-  const actionToolbarHtml = targetId ? `
-    <div style="background-color: #FAF6F0; border: 1px solid #E8DED5; border-radius: 14px; padding: 18px; margin: 28px 0; text-align: center;">
-      <p style="margin: 0 0 14px 0; font-size: 13px; font-weight: 800; color: #2C1810; text-transform: uppercase; letter-spacing: 0.6px;">
-        Interactive Documents & Actions
-      </p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-        <tr>
-          <td align="center" style="padding: 4px;">
-            <a href="${FRONTEND_URL}/customer/invoice/${targetId}" target="_blank" style="background-color: #6F4E37; color: #ffffff; padding: 11px 20px; text-decoration: none; border-radius: 9px; font-size: 13px; font-weight: 700; display: inline-block; box-shadow: 0 3px 8px rgba(111, 78, 55, 0.25);">
-              ${getVectorIcon('fileText')} <span style="vertical-align: middle; margin-left: 4px;">Download Invoice PDF</span>
-            </a>
-          </td>
-          <td align="center" style="padding: 4px;">
-            <a href="${FRONTEND_URL}/customer/receipt/${targetId}" target="_blank" style="background-color: #ffffff; color: #2C1810; border: 1.5px solid #2C1810; padding: 11px 20px; text-decoration: none; border-radius: 9px; font-size: 13px; font-weight: 700; display: inline-block;">
-              ${getVectorIcon('receipt')} <span style="vertical-align: middle; margin-left: 4px;">View Receipt</span>
-            </a>
-          </td>
-        </tr>
-      </table>
-    </div>
-  ` : '';
-
   const ctaBtnHtml = ctaLink ? `
     <div style="text-align: center; margin: 24px 0 24px 0;">
       <a href="${ctaLink}" target="_blank" style="background: linear-gradient(135deg, #2C1810 0%, #4A2C11 50%, #6F4E37 100%); color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 800; display: inline-block; box-shadow: 0 6px 18px rgba(44, 24, 16, 0.25); letter-spacing: 0.5px;">
@@ -214,7 +191,6 @@ const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = 
                     ${ctaBtnHtml}
                     ${metaGridHtml}
                     ${financialTableHtml}
-                    ${actionToolbarHtml}
                   </div>
                   ${getEmailFooter()}
                 </td>
@@ -249,7 +225,7 @@ const getOtpTemplate = (name, otp) => {
     title: 'Security Verification Code', 
     bodyHtml,
     ctaLink: `${FRONTEND_URL}/customer/profile`,
-    ctaText: 'Verify Account & Profile'
+    ctaText: 'View Now!'
   });
 };
 
@@ -257,14 +233,14 @@ const getOtpTemplate = (name, otp) => {
 const getResetPasswordTemplate = (name, resetLink) => {
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${name || 'User'},</p>
-    <p style="font-size: 15px; color: #555555;">We received a request to reset your password. Click the interactive button below to set a new password for your account.</p>
+    <p style="font-size: 15px; color: #555555;">We received a request to reset your password. Click the button below to set a new password for your account.</p>
     <p style="font-size: 13px; color: #888888; margin-top: 24px; padding-top: 16px; border-top: 1px solid #E8DED5;">If you didn't request this change, please ignore this email or reach out to support.</p>
   `;
   return generateBaseTemplate({ 
     title: 'Reset Account Password', 
     bodyHtml,
     ctaLink: resetLink || `${FRONTEND_URL}/customer/profile`,
-    ctaText: 'Set New Password'
+    ctaText: 'View Now!'
   });
 };
 
@@ -274,7 +250,7 @@ const getBookingRequestCustomerTemplate = (name, bookingId, summaryItems, bookin
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${name},</p>
     <p style="font-size: 15px; color: #555555;">Your booking request <strong style="color: #6F4E37;">#${bookingId}</strong> has been successfully created! 🎉</p>
-    <p style="font-size: 15px; color: #555555;">It is currently <span style="color: #D97706; font-weight: 700;">Pending Confirmation</span> from the venue host. You can view full details and download your invoice below.</p>
+    <p style="font-size: 15px; color: #555555;">It is currently <span style="color: #D97706; font-weight: 700;">Pending Confirmation</span> from the venue host. You can view full details below.</p>
   `;
   return generateBaseTemplate({ 
     title: 'Booking Request Submitted ⏳', 
@@ -283,7 +259,7 @@ const getBookingRequestCustomerTemplate = (name, bookingId, summaryItems, bookin
     bookingId: targetId,
     status: 'PENDING',
     ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`,
-    ctaText: 'View Reservation Status'
+    ctaText: 'View Now!'
   });
 };
 
@@ -306,7 +282,7 @@ const getBookingRequestOwnerTemplate = (ownerName, bookingId, customerName, summ
     bookingId: targetId,
     status: 'PENDING',
     ctaLink: ctaUrl, 
-    ctaText: 'Manage Booking in Dashboard' 
+    ctaText: 'View Now!' 
   });
 };
 
@@ -326,8 +302,8 @@ const getPaymentSuccessfulCustomerTemplate = (name, bookingId, summaryItems, boo
     summaryItems, 
     bookingId: targetId,
     status: 'PAID',
-    ctaLink: `${FRONTEND_URL}/customer/invoice/${targetId}`,
-    ctaText: 'Download Official Invoice'
+    ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`,
+    ctaText: 'View Now!'
   });
 };
 
@@ -350,7 +326,7 @@ const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summary
     bookingId: targetId,
     status: 'PAID',
     ctaLink: ctaUrl, 
-    ctaText: 'View Dashboard' 
+    ctaText: 'View Now!' 
   });
 };
 
@@ -370,8 +346,8 @@ const getBookingConfirmedCustomerTemplate = (name, bookingId, summaryItems, book
     summaryItems, 
     bookingId: targetId,
     status: 'CONFIRMED',
-    ctaLink: `${FRONTEND_URL}/customer/receipt/${targetId}`,
-    ctaText: 'View Confirmation Receipt'
+    ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`,
+    ctaText: 'View Now!'
   });
 };
 
@@ -394,7 +370,7 @@ const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bo
     bookingId: targetId,
     status: 'CONFIRMED',
     ctaLink: ctaUrl, 
-    ctaText: 'View Dashboard' 
+    ctaText: 'View Now!' 
   });
 };
 
@@ -415,8 +391,8 @@ const getBookingCancelledCustomerTemplate = (name, bookingId, reason, summaryIte
     summaryItems, 
     bookingId: targetId,
     status: 'CANCELLED',
-    ctaLink: `${FRONTEND_URL}/customer/cafe`,
-    ctaText: 'Browse Other Cafes'
+    ctaLink: `${FRONTEND_URL}/customer/bookings/${targetId}`,
+    ctaText: 'View Now!'
   });
 };
 
@@ -424,8 +400,8 @@ const getBookingCancelledCustomerTemplate = (name, bookingId, reason, summaryIte
 const getBookingCancelledOwnerTemplate = (ownerName, bookingId, cancelledBy, reason, summaryItems, bookingDbId = null, isEventManager = false) => {
   const targetId = bookingDbId || bookingId;
   const ctaUrl = isEventManager 
-    ? `${EM_FRONTEND_URL}/event/bookings` 
-    : `${CAFE_FRONTEND_URL}/owner/bookings`;
+    ? `${EM_FRONTEND_URL}/event/bookings/${targetId}` 
+    : `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`;
 
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${ownerName},</p>
@@ -439,7 +415,7 @@ const getBookingCancelledOwnerTemplate = (ownerName, bookingId, cancelledBy, rea
     bookingId: targetId,
     status: 'CANCELLED',
     ctaLink: ctaUrl,
-    ctaText: 'View Owner Bookings'
+    ctaText: 'View Now!'
   });
 };
 
@@ -471,7 +447,7 @@ const getPayoutCompletedTemplate = (name, amount, referenceNumber, partnerType =
     summaryItems, 
     status: 'COMPLETED',
     ctaLink,
-    ctaText: 'View Earnings & Payouts'
+    ctaText: 'View Now!'
   });
 };
 
@@ -499,7 +475,7 @@ const getRefundCompletedTemplate = (name, amount, bookingNumber, referenceNumber
     summaryItems, 
     status: 'COMPLETED',
     ctaLink: `${FRONTEND_URL}/customer/bookings`,
-    ctaText: 'View My Bookings'
+    ctaText: 'View Now!'
   });
 };
 
@@ -534,7 +510,7 @@ const getSupportTicketTemplate = (ticketData) => {
     summaryItems, 
     status: 'PENDING',
     ctaLink: `${ADMIN_FRONTEND_URL}/admin/notifications`,
-    ctaText: 'Open Admin Notifications'
+    ctaText: 'View Now!'
   });
 };
 
@@ -577,7 +553,7 @@ const getKycStatusTemplate = (name, kycStatus, rejectionReason = null, roleName 
     summaryItems, 
     status: badgeStatus,
     ctaLink: ctaUrl,
-    ctaText: isApproved ? 'Go to Partner Dashboard' : 'Update Profile Details'
+    ctaText: 'View Now!'
   });
 };
 
@@ -606,7 +582,7 @@ const getBankVerifiedTemplate = (name, roleName = 'Partner', maskedAccount = 'XX
     summaryItems, 
     status: 'PAID',
     ctaLink: ctaUrl,
-    ctaText: 'View Payment Account'
+    ctaText: 'View Now!'
   });
 };
 
@@ -637,7 +613,7 @@ const getEntityRejectedTemplate = (name, entityType = 'Cafe Venue', entityName =
     summaryItems, 
     status: 'CANCELLED',
     ctaLink: ctaUrl,
-    ctaText: 'Update Submission Details'
+    ctaText: 'View Now!'
   });
 };
 
@@ -673,7 +649,7 @@ const getSettlementCompletedTemplate = (name, amount, bookingNumber, referenceNu
     summaryItems, 
     status: 'COMPLETED',
     ctaLink,
-    ctaText: 'View Earnings & Payouts'
+    ctaText: 'View Now!'
   });
 };
 
@@ -699,7 +675,7 @@ const getNewAccountNotificationTemplate = (user) => {
     bodyHtml, 
     summaryItems, 
     ctaLink: `${ADMIN_FRONTEND_URL}/admin/customers`,
-    ctaText: 'Review User in Admin Panel'
+    ctaText: 'View Now!'
   });
 };
 
@@ -723,4 +699,5 @@ module.exports = {
   getSettlementCompletedTemplate,
   getNewAccountNotificationTemplate
 };
+
 

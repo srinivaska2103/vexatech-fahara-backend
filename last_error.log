@@ -1,39 +1,10 @@
-PrismaClientValidationError: 
-Invalid `prisma.favorites.findMany()` invocation in
-D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:4:39
-
-  1 const prisma = require('../config/prisma');
-  2 
-  3 const getFavorites = async (userId) => {
-→ 4   const favs = await prisma.favorites.findMany({
-        where: {
-          user_id: "0f692d42-ca09-481d-83af-c002b8ef3062"
-        },
-        include: {
-          cafes: {
-            include: {
-              cafe_packages: true,
-              cafe_images: true,
-              ~~~~~~~~~~~
-      ?       bookings?: true,
-      ?       cafe_business_hours?: true,
-      ?       users?: true,
-      ?       favorites?: true,
-      ?       reviews?: true
-            }
-          }
-        },
-        orderBy: {
-          created_at: "desc"
-        }
-      })
-
-Unknown field `cafe_images` for include statement on model `cafes`. Available options are marked with ?.
-    at ar (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:10:1374)
-    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7929)
-    at zr.handleAndLogRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
-    at zr.request (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async a (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
-    at async Object.getFavorites (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:4:16)
-    at async getFavorites (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\favoriteController.js:5:18)
+Error: No image provided
+    at uploadSingleImage (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\uploadController.js:5:21)
+    at Layer.handleRequest (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\layer.js:152:17)
+    at next (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\route.js:157:13)
+    at done (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\multer\lib\make-middleware.js:70:7)
+    at indicateDone (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\multer\lib\make-middleware.js:74:68)
+    at Multipart.<anonymous> (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\multer\lib\make-middleware.js:258:7)
+    at Multipart.emit (node:events:519:28)
+    at emitCloseNT (node:internal/streams/destroy:148:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21)

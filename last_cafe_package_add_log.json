@@ -1,30 +1,30 @@
 {
   "body": {
     "event_type": "Birthday Party",
-    "package_name": "Birthdat",
-    "description": "test description",
-    "price": 1,
+    "package_name": "Birthday",
+    "description": "Test Description",
+    "price": 11,
     "duration_hours": 1,
-    "minimum_persons": 10,
-    "maximum_persons": 30,
+    "minimum_persons": 1,
+    "maximum_persons": 10,
     "food": true,
-    "cake": false,
+    "cake": true,
     "decoration": true,
     "music": true,
     "other": false,
     "other_text": "",
-    "cover_image": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1787993419/fahara_uploads/mbagkqq01bbdkagvs07v.jpg",
-    "status": "PUBLISHED",
+    "cover_image": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1788516080/fahara_uploads/zb7yn4xqhyjmlp59lcpx.jpg",
+    "status": "DRAFT",
     "custom_category": "Birthday Party",
     "gallery": [
       {
         "file": {},
-        "url": "blob:http://localhost:3002/eb30a044-227e-41e6-bc78-b33200cfe3a5",
-        "id": "2skknyjbf"
+        "url": "blob:http://localhost:3002/c522144f-35aa-4686-8c99-a482c75f0d3a",
+        "id": "uc3ihegah"
       }
     ]
   },
   "params": {
-    "cafeId": "a1e3d6be-6461-4e9c-afcc-bc562136cb8d"
+    "cafeId": "79e55e5d-deb2-489a-9552-07fdad758af1"
   }
 }
