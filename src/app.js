@@ -6,6 +6,7 @@ const authRoutes = require('./routes/authRoutes');
 const cafeRoutes = require('./routes/cafeRoutes');
 const eventProfileRoutes = require('./routes/eventProfileRoutes');
 const eventServiceRoutes = require('./routes/eventServiceRoutes');
+const eventPackageRoutes = require('./routes/eventPackageRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
@@ -18,6 +19,7 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const financeRoutes = require('./routes/financeRoutes');
 const favoriteRoutes = require('./routes/favoriteRoutes');
+const tableRoutes = require('./routes/tableRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 const requestLogger = require('./middlewares/requestLogger');
 const app = express();
@@ -57,12 +59,16 @@ app.post('/api/webhooks/cashfree', webhookController.handleWebhook);
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/cafes/:cafeId/tables', tableRoutes);
+app.use('/cafes/:cafeId/tables', tableRoutes);
 app.use('/api/v1/cafes', cafeRoutes);
 app.use('/api/v1/owner/cafes', cafeRoutes);
 app.use('/owner/cafes', cafeRoutes);
 app.use('/cafes', cafeRoutes);
 app.use('/api/v1/event-profiles', eventProfileRoutes);
 app.use('/api/v1/event-services', eventServiceRoutes);
+app.use('/api/v1/event-packages', eventPackageRoutes);
+app.use('/event-packages', eventPackageRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
@@ -81,6 +87,8 @@ app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/audit', auditRoutes);
 app.use('/api/v1/favorites', favoriteRoutes);
 app.use('/api/v1/support', require('./routes/supportRoutes'));
+app.use('/api/v1/loyalty', require('./routes/loyaltyRoutes'));
+app.use('/api/loyalty', require('./routes/loyaltyRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {

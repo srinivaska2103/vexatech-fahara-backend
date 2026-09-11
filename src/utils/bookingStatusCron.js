@@ -63,6 +63,9 @@ const runAutoComplete = async () => {
   }
 };
 
+let isAutoCompleteRunning = false;
+let isSettlementRunning = false;
+
 /**
  * Runs immediately on startup to catch any missed bookings and settlements,
  * then repeats booking auto-complete every 15 mins and settlement verification every 3 hours.
@@ -76,11 +79,37 @@ const startBookingStatusCron = () => {
     checkVendorSettlements().catch(() => {});
   }, 10000);
 
-  // Schedule auto-complete every 15 minutes
-  cron.schedule('*/15 * * * *', runAutoComplete);
+  // Schedule auto-complete every 15 minutes (non-overlapping)
+  cron.schedule('*/15 * * * *', async () => {
+    if (isAutoCompleteRunning) {
+      console.warn('[Cron] Previous auto-complete run is still in progress, skipping tick.');
+      return;
+    }
+    isAutoCompleteRunning = true;
+    try {
+      await runAutoComplete();
+    } catch (err) {
+      console.error('[Cron] Auto-complete error:', err);
+    } finally {
+      isAutoCompleteRunning = false;
+    }
+  });
 
-  // Schedule vendor settlement verification with Razorpay every 3 hours
-  cron.schedule('0 */3 * * *', checkVendorSettlements);
+  // Schedule vendor settlement verification with Razorpay every 3 hours (non-overlapping)
+  cron.schedule('0 */3 * * *', async () => {
+    if (isSettlementRunning) {
+      console.warn('[Cron] Previous settlement verification is still in progress, skipping tick.');
+      return;
+    }
+    isSettlementRunning = true;
+    try {
+      await checkVendorSettlements();
+    } catch (err) {
+      console.error('[Cron] Settlement verification error:', err);
+    } finally {
+      isSettlementRunning = false;
+    }
+  });
 
   console.log('[Cron] Booking status auto-complete (every 15m) and Vendor Settlement verification with Razorpay (every 3h: 0 */3 * * *) scheduled.');
 };

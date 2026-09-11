@@ -70,9 +70,10 @@ const createOrder = async (userId, bookingId) => {
     throw error;
   }
 
-  // 2. Calculate Backend Verified Price
-  const pricing = splitService.calculateBookingPrice(booking);
-  const totalAmount = pricing.total > 0 ? pricing.total : Number(booking.total || 0);
+  // 2. Calculate Backend Verified Price via Central Pricing Engine
+  const pricingEngine = require('./pricingEngine');
+  const pricing = await pricingEngine.calculateBookingPricing(booking.id);
+  const totalAmount = pricing.grandTotal;
 
   // 3. Prepare Split information & Validate Recipient Linked Account
   const { razorpaySplits, dbSplitRecords } = await splitService.prepareSplits(booking, totalAmount);
@@ -106,8 +107,8 @@ const createOrder = async (userId, bookingId) => {
     data: {
       booking_id: booking.id,
       amount: totalAmount,
-      platform_fee: pricing.platformFee,
-      gst_amount: pricing.gstAmount,
+      platform_fee: pricing.platformFee.amount,
+      gst_amount: pricing.gst.amount,
       payment_gateway: 'RAZORPAY',
       payment_provider: 'RAZORPAY',
       gateway_order_id: razorpayOrderId,
@@ -291,6 +292,14 @@ const verifyPayment = async (userId, payload) => {
       const fullBooking = await bookingRepository.getBookingById(paymentRecord.booking_id);
       if (fullBooking) {
         notificationService.notifyBookingStatusUpdated(fullBooking, 'PAID').catch(err => console.error(err));
+      }
+
+      // Automatically award +1 Fahara Loyalty Credit on successful payment completion
+      try {
+        const loyaltyService = require('./loyaltyService');
+        await loyaltyService.awardBookingCredit(paymentRecord.booking_id);
+      } catch (loyaltyErr) {
+        console.error('[Loyalty Award Payment Complete Error]:', loyaltyErr.message);
       }
     }
 

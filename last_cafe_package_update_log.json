@@ -2,29 +2,91 @@
   "body": {
     "event_type": "Birthday Party",
     "package_name": "Birthday",
-    "description": "Test Description",
-    "price": 11,
+    "description": "Test Birthday",
+    "price": 1,
     "duration_hours": 1,
     "minimum_persons": 1,
-    "maximum_persons": 10,
+    "maximum_persons": 1,
     "food": true,
     "cake": true,
     "decoration": true,
     "music": true,
-    "other": false,
+    "other": true,
     "other_text": "",
-    "cover_image": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1788516130/fahara_uploads/xwmimqgszcpf6awbg9ro.jpg",
-    "status": "PUBLISHED",
-    "custom_category": "Birthday Party",
-    "gallery": [
+    "food_items": [
       {
-        "file": {},
-        "url": "blob:http://localhost:3002/65107e89-2a06-4937-956e-3df0239e989e",
-        "id": "j0p83fu0b"
+        "name": "Juice",
+        "price": 1
+      },
+      {
+        "name": "burger",
+        "price": 1
       }
-    ]
+    ],
+    "cake_items": [
+      {
+        "name": "cake",
+        "price": 1
+      }
+    ],
+    "decoration_items": [
+      {
+        "name": "decoration",
+        "price": 1
+      }
+    ],
+    "music_items": [
+      {
+        "name": "music",
+        "price": 1
+      }
+    ],
+    "other_items": [],
+    "cover_image": "https://res.cloudinary.com/fv9fi0y5/image/upload/v1788516181/fahara_uploads/bq58bpl0thrhogkumr5j.jpg",
+    "status": "PUBLISHED",
+    "custom_category": "",
+    "gallery": [
+      "https://res.cloudinary.com/fv9fi0y5/image/upload/v1788707312/fahara_uploads/yvo3hyncta295wqrd70n.jpg"
+    ],
+    "inclusions": {
+      "food": true,
+      "food_items": [
+        {
+          "name": "Juice",
+          "price": 1
+        },
+        {
+          "name": "burger",
+          "price": 1
+        }
+      ],
+      "cake": true,
+      "cake_items": [
+        {
+          "name": "cake",
+          "price": 1
+        }
+      ],
+      "decoration": true,
+      "decoration_items": [
+        {
+          "name": "decoration",
+          "price": 1
+        }
+      ],
+      "music": true,
+      "music_items": [
+        {
+          "name": "music",
+          "price": 1
+        }
+      ],
+      "other": true,
+      "other_text": "",
+      "other_items": []
+    }
   },
   "params": {
-    "packageId": "03943287-9f4c-4883-88b3-34def6d5cb7a"
+    "packageId": "e56a0cdf-5922-4d61-8730-4cd451ad3a6d"
   }
 }

@@ -63,8 +63,8 @@ const addReviewSchema = Joi.object({
  *       403:
  *         description: Unauthorized (Must have a completed booking)
  */
-router.post('/', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'), validateRequest(addReviewSchema), reviewController.addReview);
-router.get('/', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN', 'CUSTOMER'), reviewController.getOwnerReviews);
+router.post('/', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), validateRequest(addReviewSchema), reviewController.addReview);
+router.get('/', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN', 'CUSTOMER'), reviewController.getOwnerReviews);
 
 /**
  * @swagger
@@ -124,12 +124,12 @@ router.get('/event-service/:serviceId', reviewController.getEventServiceReviews)
  *       403:
  *         description: Unauthorized to delete this review
  */
-router.delete('/:id', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'), reviewController.deleteReview);
+router.delete('/:id', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), reviewController.deleteReview);
 
 // Owner & Event Manager review routes
-router.get('/owner/analytics', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), reviewController.getOwnerReviewAnalytics);
-router.get('/owner/summary', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), reviewController.getOwnerReviewSummary);
-router.get('/owner', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), reviewController.getOwnerReviews);
+router.get('/owner/analytics', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), reviewController.getOwnerReviewAnalytics);
+router.get('/owner/summary', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), reviewController.getOwnerReviewSummary);
+router.get('/owner', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), reviewController.getOwnerReviews);
 
 router.get('/summary', protect, reviewController.getOwnerReviewSummary);
 router.get('/analytics', protect, reviewController.getOwnerReviewAnalytics);
@@ -139,9 +139,9 @@ router.get('/admin/all', protect, authorizeRoles('ADMIN'), reviewController.getA
 router.put('/admin/:id/moderate', protect, authorizeRoles('ADMIN'), reviewController.moderateReview);
 
 // Reply routes
-router.post('/:id/reply', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), reviewController.replyToReview);
-router.put('/:id/reply', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), reviewController.updateReply);
-router.delete('/:id/reply', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), reviewController.deleteReply);
+router.post('/:id/reply', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), reviewController.replyToReview);
+router.put('/:id/reply', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), reviewController.updateReply);
+router.delete('/:id/reply', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), reviewController.deleteReply);
 
 // Single Review by ID (Must be after specific named paths like /summary, /analytics, /owner)
 router.get('/:id', protect, reviewController.getReviewById);

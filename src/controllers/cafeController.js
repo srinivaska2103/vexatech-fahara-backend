@@ -48,7 +48,6 @@ const deleteCafe = async (req, res, next) => {
 
 const updateBusinessHours = async (req, res, next) => {
   try {
-    fs.writeFileSync('last_cafe_business_hours_log.json', JSON.stringify({ body: req.body, params: req.params }, null, 2));
     console.log("PUT /cafe/:id/business-hours received body:", req.body);
 
     let hours = req.body.business_hours || req.body.working_hrs || req.body.workingHours;
@@ -69,7 +68,6 @@ const updateBusinessHours = async (req, res, next) => {
 
 const addPackage = async (req, res, next) => {
   try {
-    fs.writeFileSync('last_cafe_package_add_log.json', JSON.stringify({ body: req.body, params: req.params }, null, 2));
     console.log("POST /cafe/:cafeId/packages received body:", req.body);
     
     // Support camelCase coverImage if frontend is sending that
@@ -87,7 +85,6 @@ const addPackage = async (req, res, next) => {
 
 const updatePackage = async (req, res, next) => {
   try {
-    fs.writeFileSync('last_cafe_package_update_log.json', JSON.stringify({ body: req.body, params: req.params }, null, 2));
     console.log("PUT /cafe/packages/:packageId received body:", req.body);
 
     // Support camelCase coverImage if frontend is sending that

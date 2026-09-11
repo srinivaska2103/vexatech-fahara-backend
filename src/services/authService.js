@@ -19,9 +19,9 @@ const registerUser = async (userData) => {
   let existingUser = await userRepository.findUserByEmail(email);
   if (existingUser) {
     const existingRole = (existingUser.roles?.name || '').toUpperCase();
-    const isPartner = existingRole === 'CAFE_OWNER' || existingRole === 'EVENT_MANAGER';
+    const isPartner = existingRole === 'CAFE_OWNER' || existingRole === 'RESTAURANT_OWNER' || existingRole === 'EVENT_MANAGER';
     if (isPartner && (roleName || 'CUSTOMER').toUpperCase() === 'CUSTOMER') {
-      const error = new Error('An account with this email address is already registered as a Cafe Owner or Event Manager and cannot be registered as a Customer.');
+      const error = new Error('An account with this email address is already registered as a Venue Owner or Event Manager and cannot be registered as a Customer.');
       error.statusCode = 400;
       throw error;
     }
@@ -178,6 +178,7 @@ const login = async (emailInput, password, expectedRole, clientIp) => {
   const roleName = (user.roles?.name || '').toUpperCase();
   const isPartnerAccount = 
     roleName === 'CAFE_OWNER' || 
+    roleName === 'RESTAURANT_OWNER' || 
     roleName === 'EVENT_MANAGER' || 
     (user.cafes && user.cafes.length > 0) || 
     (user.event_management_profiles && user.event_management_profiles.length > 0);
@@ -191,12 +192,12 @@ const login = async (emailInput, password, expectedRole, clientIp) => {
   }
 
   if (targetRole === 'CUSTOMER' && isPartnerAccount) {
-    const error = new Error('Accounts created as Cafe Owner or Event Manager are not permitted to log in as Customer. Please use the Partner portal.');
+    const error = new Error('Accounts created as Cafe/Restaurant Owner or Event Manager are not permitted to log in as Customer. Please use the Partner portal.');
     error.statusCode = 403;
     throw error;
   }
 
-  if ((targetRole === 'CAFE_OWNER' || targetRole === 'EVENT_MANAGER' || targetRole === 'PARTNER') && roleName === 'CUSTOMER' && !isPartnerAccount) {
+  if ((targetRole === 'CAFE_OWNER' || targetRole === 'RESTAURANT_OWNER' || targetRole === 'EVENT_MANAGER' || targetRole === 'PARTNER') && roleName === 'CUSTOMER' && !isPartnerAccount) {
     const error = new Error('Customer accounts are not permitted to log in to the Partner portal. Please use the Customer portal.');
     error.statusCode = 403;
     throw error;

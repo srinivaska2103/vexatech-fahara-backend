@@ -10,7 +10,9 @@ const router = express.Router();
 const bookingSchema = Joi.object({
   cafe_id: Joi.string().uuid().required(),
   package_id: Joi.string().uuid().allow(null, ''),
+  package_amount: Joi.number().min(0).allow(null).default(0),
   event_service_id: Joi.string().uuid().allow(null, ''),
+  table_id: Joi.string().uuid().allow(null, ''),
   booking_date: Joi.string().isoDate().required(),
   start_time: Joi.string().pattern(/^([01]\d|2[0-3]):?([0-5]\d):?([0-5]\d)$/).required().messages({'string.pattern.base': 'start_time must be HH:mm:ss'}),
   end_time: Joi.string().pattern(/^([01]\d|2[0-3]):?([0-5]\d):?([0-5]\d)$/).required().messages({'string.pattern.base': 'end_time must be HH:mm:ss'}),
@@ -22,7 +24,38 @@ const bookingSchema = Joi.object({
   discount: Joi.number().min(0).default(0),
   special_request: Joi.string().allow('', null),
   event_special_request: Joi.string().allow('', null),
+  redeemed_credits: Joi.number().min(0).allow(null).default(0),
+  // ── inclusions: array of selected tier objects from the frontend ──
+  inclusions: Joi.array().items(
+    Joi.object({
+      // canonical fields
+      inclusionId: Joi.string().allow(null, ''),
+      tierId: Joi.string().allow(null, ''),
+      quantity: Joi.number().integer().min(1).default(1),
+      // legacy / alias fields — all preserved so normalizer can pick the right one
+      inclusion_id: Joi.string().allow(null, ''),
+      tier_id: Joi.string().allow(null, ''),
+      id: Joi.string().allow(null, ''),
+      name: Joi.string().allow(null, ''),
+      price: Joi.number().allow(null),
+      unitPrice: Joi.number().allow(null),
+      unit_price: Joi.number().allow(null),
+      pricing_type: Joi.string().allow(null, ''),
+      pricingType: Joi.string().allow(null, ''),
+      description: Joi.string().allow(null, ''),
+      tier_name: Joi.string().allow(null, ''),
+      tierName: Joi.string().allow(null, ''),
+      level: Joi.string().allow(null, ''),
+      tierLevel: Joi.string().allow(null, ''),
+      inclusionName: Joi.string().allow(null, ''),
+      inclusion_name: Joi.string().allow(null, ''),
+      tierItemName: Joi.string().allow(null, ''),
+    }).unknown(true)  // allow any extra debug fields the frontend sends
+  ).allow(null).default(null),
+  // ── optional add-ons (future use) ──
+  selected_add_ons: Joi.array().items(Joi.object().unknown(true)).allow(null).default(null),
 });
+
 
 const statusSchema = Joi.object({
   status: Joi.string().valid('PENDING', 'CONFIRMED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'REJECTED').required(),
@@ -120,8 +153,8 @@ router.get('/my-bookings', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EV
  *       200:
  *         description: List of bookings
  */
-router.get('/cafe-bookings', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), bookingController.getCafeBookings);
-router.get('/calendar', protect, authorizeRoles('CAFE_OWNER', 'EVENT_MANAGER'), bookingController.getCafeBookings);
+router.get('/cafe-bookings', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), bookingController.getCafeBookings);
+router.get('/calendar', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), bookingController.getCafeBookings);
 
 /**
  * @swagger
@@ -159,6 +192,27 @@ router.get('/:id', protect, bookingController.getBookingById);
 
 /**
  * @swagger
+ * /api/v1/bookings/{id}/pricing:
+ *   get:
+ *     summary: Get authoritative booking pricing breakdown by ID
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Authoritative booking pricing breakdown
+ */
+router.get('/:id/pricing', protect, bookingController.getBookingPricing);
+router.post('/:id/select-package', protect, bookingController.selectPackage);
+
+/**
+ * @swagger
  * /api/v1/bookings/{id}/status:
  *   patch:
  *     summary: Update booking status
@@ -187,7 +241,7 @@ router.get('/:id', protect, bookingController.getBookingById);
  *       200:
  *         description: Status updated
  */
-router.patch('/:id/status', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), validateRequest(statusSchema), bookingController.updateBookingStatus);
+router.patch('/:id/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), validateRequest(statusSchema), bookingController.updateBookingStatus);
 
 /**
  * @swagger

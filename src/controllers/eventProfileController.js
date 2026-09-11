@@ -21,10 +21,8 @@ const createProfile = async (req, res, next) => {
   }
 };
 
-const fs = require('fs');
 const updateProfile = async (req, res, next) => {
   try {
-    fs.writeFileSync('last_request_log.json', JSON.stringify({ body: req.body }, null, 2));
     console.log("PUT /me received body:", req.body);
     // Support camelCase businessHours if frontend is sending that
     if (req.body.businessHours && !req.body.business_hours) {
@@ -34,7 +32,6 @@ const updateProfile = async (req, res, next) => {
     const result = await eventProfileService.updateProfile(req.user.id, req.body);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
-    fs.writeFileSync('last_error_log.json', JSON.stringify({ error: error.message }, null, 2));
     next(error);
   }
 };

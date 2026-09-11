@@ -99,6 +99,69 @@ const notifyUser = async (userId, title, message, type, bookingId = null, custom
   }
 };
 
+const formatTableMeta = (booking) => {
+  if (booking.booking_tables && Array.isArray(booking.booking_tables) && booking.booking_tables.length > 0) {
+    return booking.booking_tables.map(bt => {
+      const tbl = bt.cafe_tables || bt;
+      const num = tbl.table_number || tbl.name || 'T1';
+      const cap = tbl.capacity ? ` (${tbl.capacity} Seats)` : '';
+      const loc = tbl.location ? ` - ${tbl.location}` : '';
+      return `Table ${num}${cap}${loc}`;
+    }).join(', ');
+  }
+  return 'Standard Open Seating';
+};
+
+const formatInclusionMeta = (booking) => {
+  // Check booking_items or booking.inclusions first
+  if (Array.isArray(booking.inclusions) && booking.inclusions.length > 0) {
+    const names = booking.inclusions
+      .map(i => typeof i === 'string' ? i : (i.item_name || i.title || i.name || (i.tier_name ? `${i.tier_name}` : null)))
+      .filter(Boolean);
+    if (names.length > 0) return names.join(', ');
+  }
+
+  // Check event_services inclusions
+  if (booking.event_services) {
+    const es = booking.event_services;
+    let inc = es.inclusions;
+    if (typeof inc === 'string') {
+      try { inc = JSON.parse(inc); } catch (e) { inc = []; }
+    }
+    if (Array.isArray(inc) && inc.length > 0) {
+      const names = inc.map(i => i.name || i.category || 'Feature').filter(Boolean);
+      if (names.length > 0) return `${es.service_name || 'Event Package'}: ${names.join(', ')}`;
+    }
+  }
+
+  if (!booking.packages) return '';
+  const pkgName = booking.packages.package_name || 'Cafe Package';
+  let inc = booking.packages.inclusions;
+  if (typeof inc === 'string') {
+    try { inc = JSON.parse(inc); } catch (e) { inc = {}; }
+  }
+  if (Array.isArray(inc) && inc.length > 0) {
+    const names = inc.map(i => i.name || i.category || 'Inclusion').filter(Boolean);
+    return `${pkgName}: ${names.join(', ')}`;
+  }
+
+  const sourceObj = (inc && typeof inc === 'object') ? { ...booking.packages, ...inc } : booking.packages;
+  const items = [];
+  ['food_items', 'cake_items', 'decoration_items', 'music_items', 'other_items'].forEach(key => {
+    if (Array.isArray(sourceObj[key])) {
+      sourceObj[key].forEach(i => {
+        const name = typeof i === 'string' ? i : (i?.name || '');
+        if (name) items.push(name.charAt(0).toUpperCase() + name.slice(1));
+      });
+    }
+  });
+
+  if (items.length > 0) {
+    return `${pkgName}: ${items.slice(0, 4).join(', ')}${items.length > 4 ? '...' : ''}`;
+  }
+  return pkgName;
+};
+
 const notifyBookingCreated = async (booking) => {
   const hasEventService = !!(booking.event_services?.user_id);
   const cafeAmount = Number(booking.cafe_amount || 0);
@@ -116,6 +179,14 @@ const notifyBookingCreated = async (booking) => {
   // Cafe owner portion: cafe_amount + food + decoration + extra_person - discount
   const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount;
 
+  const tableInfo = formatTableMeta(booking);
+  const inclusionInfo = formatInclusionMeta(booking);
+
+  const pkgName = booking.packages?.package_name || 'Add-On';
+
+  const categoryStr = `${booking.cafes?.category || ''} ${booking.cafes?.service_type || ''} ${booking.cafes?.name || ''}`.toLowerCase();
+  const isRestaurant = categoryStr.includes('restaur') || categoryStr.includes('restur');
+
   // ── Customer summary: full breakdown ──
   const customerSummaryItems = [
     { label: 'Booking No', value: booking.booking_number, icon: '🎫' },
@@ -123,15 +194,16 @@ const notifyBookingCreated = async (booking) => {
     { label: 'Date', value: formatDateUTC(booking.booking_date), icon: '📅' },
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
-    { label: 'Cafe Charges', value: `₹${cafeAmount.toFixed(2)}` },
+    { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
+    ...(inclusionInfo ? [{ label: 'Package Inclusions', value: inclusionInfo, icon: '✨' }] : []),
+    { label: 'Venue Cafe Charges', value: `₹${cafeOwnerAmount.toFixed(2)}` },
   ];
-  if (foodAmount > 0) customerSummaryItems.push({ label: 'Food Amount', value: `₹${foodAmount.toFixed(2)}` });
-  if (decorationAmount > 0) customerSummaryItems.push({ label: 'Decoration Amount', value: `₹${decorationAmount.toFixed(2)}` });
-  if (extraPersonAmount > 0) customerSummaryItems.push({ label: 'Extra Persons', value: `₹${extraPersonAmount.toFixed(2)}` });
+
   if (hasEventService) {
     customerSummaryItems.push({ label: 'Event Service Package', value: booking.event_services?.service_name || booking.event_services?.title || 'Event Package', icon: '✨' });
-    customerSummaryItems.push({ label: 'Event Service Charges', value: `₹${eventServiceAmount.toFixed(2)}` });
+    customerSummaryItems.push({ label: '3rd-Party Event Service Charge', value: `₹${eventServiceAmount.toFixed(2)}` });
   }
+
   if (discount > 0) customerSummaryItems.push({ label: 'Discount', value: `-₹${discount.toFixed(2)}` });
   customerSummaryItems.push({ label: 'Subtotal', value: `₹${subtotal.toFixed(2)}` });
   customerSummaryItems.push({ label: 'Platform Fee (3%)', value: `₹${faharaCharge.toFixed(2)}` });
@@ -146,15 +218,12 @@ const notifyBookingCreated = async (booking) => {
     { label: 'Date', value: formatDateUTC(booking.booking_date), icon: '📅' },
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
-    { label: 'Cafe Charges', value: `₹${cafeAmount.toFixed(2)}` },
+    { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
+    { label: 'Venue Cafe Charges', value: `₹${cafeOwnerAmount.toFixed(2)}`, isHighlight: true },
   ];
-  if (foodAmount > 0) cafeSummaryItems.push({ label: 'Food Amount', value: `₹${foodAmount.toFixed(2)}` });
-  if (decorationAmount > 0) cafeSummaryItems.push({ label: 'Decoration Amount', value: `₹${decorationAmount.toFixed(2)}` });
-  if (extraPersonAmount > 0) cafeSummaryItems.push({ label: 'Extra Persons', value: `₹${extraPersonAmount.toFixed(2)}` });
-  if (discount > 0) cafeSummaryItems.push({ label: 'Discount', value: `-₹${discount.toFixed(2)}` });
-  cafeSummaryItems.push({ label: 'Amount Payable to You', value: `₹${cafeOwnerAmount.toFixed(2)}`, isHighlight: true });
+
   if (hasEventService) {
-    cafeSummaryItems.push({ label: 'Event Service (Paid Separately)', value: `₹${eventServiceAmount.toFixed(2)}` });
+    cafeSummaryItems.push({ label: '3rd-Party Event Service (Paid Separately)', value: `₹${eventServiceAmount.toFixed(2)}` });
   }
 
   // ── Event Manager summary: their portion only ──
@@ -164,32 +233,39 @@ const notifyBookingCreated = async (booking) => {
     { label: 'Date', value: formatDateUTC(booking.booking_date), icon: '📅' },
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
+    { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
+    ...(inclusionInfo ? [{ label: 'Selected Event Inclusions', value: inclusionInfo, icon: '✨' }] : []),
     { label: 'Event Service Package', value: booking.event_services?.service_name || booking.event_services?.title || 'Event Package', icon: '✨' },
     { label: 'Amount Payable to You', value: `₹${eventServiceAmount.toFixed(2)}`, isHighlight: true },
-    { label: 'Cafe Charges (Paid Separately)', value: `₹${cafeOwnerAmount.toFixed(2)}` },
+    { label: 'Cafe Venue Charges (Paid Separately)', value: `₹${cafeOwnerAmount.toFixed(2)}` },
   ];
 
   const customerName = booking.users?.name || 'Customer';
   const bookingDbId = booking.id;
+  const isFreeReservation = Number(booking.total || 0) === 0;
 
   // Notify Customer
   await notifyUser(
     booking.customer_id,
-    'Booking Requested',
-    `Your booking ${booking.booking_number} has been created and is pending payment. Total: ₹${total.toFixed(2)}`,
+    isFreeReservation ? 'Table Reservation Requested' : 'Booking Requested',
+    isFreeReservation
+      ? `Your table reservation request (${booking.booking_number}) at ${booking.cafes?.name || 'the venue'} has been submitted and is awaiting confirmation from the restaurant owner.`
+      : `Your booking ${booking.booking_number} has been created and is pending payment. Total: ₹${total.toFixed(2)}`,
     'BOOKING_CREATED',
     booking.id,
     templates.getBookingRequestCustomerTemplate(customerName, booking.booking_number, customerSummaryItems, bookingDbId)
   );
 
-  // Notify Cafe Owner
+  // Notify Cafe/Restaurant Owner
   await notifyUser(
     booking.cafes.owner_id,
-    'New Booking Request',
-    `You have a new booking request (${booking.booking_number}) for your cafe ${booking.cafes?.name}. Your portion: ₹${cafeOwnerAmount.toFixed(2)}`,
+    isFreeReservation ? 'New Table Reservation Request!' : 'New Booking Request',
+    isFreeReservation
+      ? `You have a new table reservation request (${booking.booking_number}) for ${booking.total_persons || 1} guest(s) at ${booking.cafes?.name} on ${formatDateUTC(booking.booking_date)} at ${formatTimeUTC(booking.start_time)}. Please accept or decline this request.`
+      : `You have a new booking request (${booking.booking_number}) for your cafe ${booking.cafes?.name}. Your portion: ₹${cafeOwnerAmount.toFixed(2)}`,
     'BOOKING_CREATED',
     booking.id,
-    templates.getBookingRequestOwnerTemplate('Cafe Owner', booking.booking_number, customerName, cafeSummaryItems, bookingDbId)
+    templates.getBookingRequestOwnerTemplate('Restaurant Owner', booking.booking_number, customerName, cafeSummaryItems, bookingDbId)
   );
 
   console.log(`[notifyBookingCreated] Checking event service for booking ${booking.booking_number}... event_services=${!!booking.event_services}, user_id=${booking.event_services?.user_id}`);
@@ -222,41 +298,53 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
   const total = Number(booking.total || (subtotal + faharaCharge + transactionFee + gst));
   const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount;
 
+  const tableInfo = formatTableMeta(booking);
+  const inclusionInfo = formatInclusionMeta(booking);
+
+  const categoryStr = `${booking.cafes?.category || ''} ${booking.cafes?.service_type || ''} ${booking.cafes?.name || ''}`.toLowerCase();
+  const isRestaurant = categoryStr.includes('restaur') || categoryStr.includes('restur') || total === 0;
+
   const baseSummaryItems = [
     { label: 'Booking No', value: booking.booking_number, icon: '🎫' },
     { label: 'Cafe', value: booking.cafes?.name || 'Cafe', icon: '☕' },
     { label: 'Date', value: formatDateUTC(booking.booking_date), icon: '📅' },
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
+    { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
+    ...(!isRestaurant && inclusionInfo ? [{ label: 'Package Inclusions', value: inclusionInfo, icon: '✨' }] : [])
   ];
 
   // ── Customer: full breakdown ──
   const summaryItemsCustomer = [...baseSummaryItems,
-    { label: 'Cafe Charges', value: `₹${cafeAmount.toFixed(2)}` },
-    ...(foodAmount > 0 ? [{ label: 'Food Amount', value: `₹${foodAmount.toFixed(2)}` }] : []),
-    ...(decorationAmount > 0 ? [{ label: 'Decoration Amount', value: `₹${decorationAmount.toFixed(2)}` }] : []),
-    ...(extraPersonAmount > 0 ? [{ label: 'Extra Persons', value: `₹${extraPersonAmount.toFixed(2)}` }] : []),
-    ...(hasEventService ? [
-      { label: 'Event Service Package', value: booking.event_services?.service_name || booking.event_services?.title || 'Event Package', icon: '✨' },
-      { label: 'Event Service Charges', value: `₹${eventServiceAmount.toFixed(2)}` },
-    ] : []),
-    ...(discount > 0 ? [{ label: 'Discount', value: `-₹${discount.toFixed(2)}` }] : []),
-    { label: 'Subtotal', value: `₹${subtotal.toFixed(2)}` },
-    { label: 'Platform Fee (3%)', value: `₹${faharaCharge.toFixed(2)}` },
-    { label: 'Transaction Fee (3%)', value: `₹${transactionFee.toFixed(2)}` },
-    { label: 'GST (18% on Txn Fee)', value: `₹${gst.toFixed(2)}` },
-    { label: 'Grand Total', value: `₹${total.toFixed(2)}`, isHighlight: true },
+    ...(!isRestaurant ? [
+      { label: 'Cafe Charges', value: `₹${cafeAmount.toFixed(2)}` },
+      ...(foodAmount > 0 ? [{ label: 'Food Amount', value: `₹${foodAmount.toFixed(2)}` }] : []),
+      ...(decorationAmount > 0 ? [{ label: 'Decoration Amount', value: `₹${decorationAmount.toFixed(2)}` }] : []),
+      ...(extraPersonAmount > 0 ? [{ label: 'Extra Persons', value: `₹${extraPersonAmount.toFixed(2)}` }] : []),
+      ...(hasEventService ? [
+        { label: 'Event Service Package', value: booking.event_services?.service_name || booking.event_services?.title || 'Event Package', icon: '✨' },
+        { label: 'Event Service Charges', value: `₹${eventServiceAmount.toFixed(2)}` },
+      ] : []),
+      ...(discount > 0 ? [{ label: 'Discount', value: `-₹${discount.toFixed(2)}` }] : []),
+      { label: 'Subtotal', value: `₹${subtotal.toFixed(2)}` },
+      { label: 'Platform Fee (3%)', value: `₹${faharaCharge.toFixed(2)}` },
+      { label: 'Transaction Fee (3%)', value: `₹${transactionFee.toFixed(2)}` },
+      { label: 'GST (18% on Txn Fee)', value: `₹${gst.toFixed(2)}` },
+      { label: 'Grand Total', value: `₹${total.toFixed(2)}`, isHighlight: true },
+    ] : [])
   ];
 
   // ── Cafe Owner: their portion ──
   const summaryItemsCafe = [...baseSummaryItems,
-    { label: 'Cafe Charges', value: `₹${cafeAmount.toFixed(2)}` },
-    ...(foodAmount > 0 ? [{ label: 'Food Amount', value: `₹${foodAmount.toFixed(2)}` }] : []),
-    ...(decorationAmount > 0 ? [{ label: 'Decoration Amount', value: `₹${decorationAmount.toFixed(2)}` }] : []),
-    ...(extraPersonAmount > 0 ? [{ label: 'Extra Persons', value: `₹${extraPersonAmount.toFixed(2)}` }] : []),
-    ...(discount > 0 ? [{ label: 'Discount', value: `-₹${discount.toFixed(2)}` }] : []),
-    { label: 'Amount Payable to You', value: `₹${cafeOwnerAmount.toFixed(2)}`, isHighlight: true },
-    ...(hasEventService ? [{ label: 'Event Service (Paid Separately)', value: `₹${eventServiceAmount.toFixed(2)}` }] : []),
+    ...(!isRestaurant ? [
+      { label: 'Cafe Charges', value: `₹${cafeAmount.toFixed(2)}` },
+      ...(foodAmount > 0 ? [{ label: 'Food Amount', value: `₹${foodAmount.toFixed(2)}` }] : []),
+      ...(decorationAmount > 0 ? [{ label: 'Decoration Amount', value: `₹${decorationAmount.toFixed(2)}` }] : []),
+      ...(extraPersonAmount > 0 ? [{ label: 'Extra Persons', value: `₹${extraPersonAmount.toFixed(2)}` }] : []),
+      ...(discount > 0 ? [{ label: 'Discount', value: `-₹${discount.toFixed(2)}` }] : []),
+      { label: 'Amount Payable to You', value: `₹${cafeOwnerAmount.toFixed(2)}`, isHighlight: true },
+      ...(hasEventService ? [{ label: 'Event Service (Paid Separately)', value: `₹${eventServiceAmount.toFixed(2)}` }] : []),
+    ] : [])
   ];
 
   // ── Event Manager: their portion ──

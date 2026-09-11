@@ -1,8 +1,21 @@
 const prisma = require('../config/prisma');
+
 const flattenInclusions = (pkg) => {
-  if (pkg && pkg.inclusions && typeof pkg.inclusions === 'object') {
+  if (!pkg) return pkg;
+
+  if (pkg.price !== undefined && pkg.price !== null) {
+    pkg.price = Number(pkg.price);
+  }
+  if (pkg.base_price !== undefined && pkg.base_price !== null) {
+    pkg.base_price = Number(pkg.base_price);
+  } else if (pkg.price !== undefined) {
+    pkg.base_price = pkg.price;
+  }
+
+  if (pkg.inclusions && typeof pkg.inclusions === 'object' && !Array.isArray(pkg.inclusions)) {
     Object.assign(pkg, pkg.inclusions);
   }
+
   return pkg;
 };
 

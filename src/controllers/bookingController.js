@@ -38,6 +38,25 @@ const getBookingById = async (req, res, next) => {
   }
 };
 
+const getBookingPricing = async (req, res, next) => {
+  try {
+    const roleName = req.user.roles?.name || req.user.role;
+    const result = await bookingService.getBookingPricing(req.params.id, req.user.id, roleName);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const selectPackage = async (req, res, next) => {
+  try {
+    const result = await bookingService.selectPackage(req.params.id, req.user.id, req.body);
+    res.status(200).json({ success: true, message: 'Package selection updated successfully', data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateBookingStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
@@ -83,6 +102,8 @@ module.exports = {
   getCafeBookings,
   getAllAdminBookings,
   getBookingById,
+  getBookingPricing,
+  selectPackage,
   updateBookingStatus,
   cancelBooking,
   deleteBooking,

@@ -63,9 +63,29 @@ const stitchMediaToCafes = async (cafes) => {
           pkg.cover_image = mediaMap[pkg.id];
         }
         
-        // Flatten inclusions back to root level for the frontend
-        if (pkg.inclusions && typeof pkg.inclusions === 'object') {
+        // Flatten legacy object-format inclusions back to root level for the frontend.
+        // IMPORTANT: Do NOT flatten if inclusions is an ARRAY (new tier schema) — that would
+        // spread numeric indices (0, 1, 2...) onto the package, corrupting it.
+        if (pkg.inclusions && typeof pkg.inclusions === 'object' && !Array.isArray(pkg.inclusions)) {
           Object.assign(pkg, pkg.inclusions);
+        }
+
+
+        let incSum = 0;
+        const isFood = pkg.food !== undefined ? Boolean(pkg.food) : Boolean(pkg.inclusions?.food);
+        const isCake = pkg.cake !== undefined ? Boolean(pkg.cake) : Boolean(pkg.inclusions?.cake);
+        const isDecor = pkg.decoration !== undefined ? Boolean(pkg.decoration) : Boolean(pkg.inclusions?.decoration);
+        const isMusic = pkg.music !== undefined ? Boolean(pkg.music) : Boolean(pkg.inclusions?.music);
+        const isOther = pkg.other !== undefined ? Boolean(pkg.other) : Boolean(pkg.inclusions?.other);
+
+        if (isFood && Array.isArray(pkg.food_items)) pkg.food_items.forEach(i => incSum += Number(i.price) || 0);
+        if (isCake && Array.isArray(pkg.cake_items)) pkg.cake_items.forEach(i => incSum += Number(i.price) || 0);
+        if (isDecor && Array.isArray(pkg.decoration_items)) pkg.decoration_items.forEach(i => incSum += Number(i.price) || 0);
+        if (isMusic && Array.isArray(pkg.music_items)) pkg.music_items.forEach(i => incSum += Number(i.price) || 0);
+        if (isOther && Array.isArray(pkg.other_items)) pkg.other_items.forEach(i => incSum += Number(i.price) || 0);
+
+        if (incSum > 0) {
+          pkg.price = incSum;
         }
       });
     }
@@ -130,7 +150,7 @@ const findAllCafes = async (query = {}) => {
 };
 
 const findCafeById = async (id) => {
-  const cafe = await prisma.cafes.findUnique({
+  let cafe = await prisma.cafes.findUnique({
     where: { id },
     include: {
       users: {
@@ -141,6 +161,21 @@ const findCafeById = async (id) => {
       reviews: true,
     },
   });
+
+  if (!cafe && id) {
+    cafe = await prisma.cafes.findFirst({
+      where: { user_id: id },
+      include: {
+        users: {
+          select: { name: true, email: true, phone: true },
+        },
+        cafe_packages: true,
+        cafe_business_hours: true,
+        reviews: true,
+      },
+    });
+  }
+
   return await stitchMediaToCafes(cafe);
 };
 
@@ -152,8 +187,27 @@ const updateCafe = async (id, updateData) => {
 };
 
 const deleteCafe = async (id) => {
-  return await prisma.cafes.delete({
-    where: { id },
+  return await prisma.$transaction(async (tx) => {
+    // Delete dependent child records without ON DELETE CASCADE
+    await tx.cafe_business_hours.deleteMany({ where: { cafe_id: id } });
+    await tx.cafe_packages.deleteMany({ where: { cafe_id: id } });
+    await tx.cafe_tables.deleteMany({ where: { cafe_id: id } });
+    await tx.favorites.deleteMany({ where: { cafe_id: id } });
+    await tx.reviews.deleteMany({ where: { cafe_id: id } });
+
+    // Check if bookings exist
+    const bookingCount = await tx.bookings.count({ where: { cafe_id: id } });
+    if (bookingCount > 0) {
+      // Soft-delete if bookings exist to preserve historical data
+      return await tx.cafes.update({
+        where: { id },
+        data: { status: 'INACTIVE' }
+      });
+    }
+
+    return await tx.cafes.delete({
+      where: { id },
+    });
   });
 };
 

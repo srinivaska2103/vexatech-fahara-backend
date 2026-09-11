@@ -13,7 +13,13 @@ const serviceSchema = Joi.object({
   description: Joi.string().allow('', null),
   price: Joi.number().min(0).required(),
   gallery: Joi.array().items(Joi.string()).optional(),
-  inclusions: Joi.array().items(Joi.string()).optional(),
+  // Accept either legacy string array OR rich tiered-object array
+  inclusions: Joi.array().items(
+    Joi.alternatives().try(
+      Joi.string(),
+      Joi.object().unknown(true)
+    )
+  ).optional(),
 });
 
 

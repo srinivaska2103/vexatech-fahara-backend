@@ -54,7 +54,13 @@ const getBookingById = async (id) => {
       },
       users: {
         select: { name: true, email: true, phone: true }
-      }
+      },
+      booking_tables: {
+        include: {
+          cafe_tables: true
+        }
+      },
+      booking_items: true
     }
   });
 
@@ -121,10 +127,17 @@ const getBookingsByCustomer = async (customerId) => {
     orderBy: { created_at: 'desc' }
   });
 
-  // Attach packages
-  for (const b of bookings) {
-    if (b.package_id) {
-      b.packages = await prisma.cafe_packages.findUnique({ where: { id: b.package_id } });
+  // Collect package IDs and batch fetch
+  const packageIds = [...new Set(bookings.map(b => b.package_id).filter(Boolean))];
+  if (packageIds.length > 0) {
+    const packages = await prisma.cafe_packages.findMany({
+      where: { id: { in: packageIds } }
+    });
+    const packageMap = new Map(packages.map(p => [p.id, p]));
+    for (const b of bookings) {
+      if (b.package_id) {
+        b.packages = packageMap.get(b.package_id) || null;
+      }
     }
   }
 
@@ -153,7 +166,13 @@ const getBookingsByCafeOwner = async (ownerId, userRole = 'CAFE_OWNER') => {
     where: whereClause,
     include: {
       cafes: { select: { name: true } },
-      users: { select: { name: true, email: true, phone: true } }
+      users: { select: { name: true, email: true, phone: true } },
+      booking_items: true,
+      booking_tables: {
+        include: {
+          cafe_tables: true
+        }
+      }
     },
     orderBy: { created_at: 'desc' }
   });

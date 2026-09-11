@@ -13,7 +13,7 @@ const createCafe = async (userId, cafeData) => {
     throw error;
   }
 
-  const { business_hours, ...validCafeData } = cafeData;
+  const { business_hours, email, phone, state, country, pincode, working_hrs, workingHours, google_reviews_link, ...validCafeData } = cafeData;
   
   let cafe = await cafeRepository.createCafe({
     ...validCafeData,
@@ -87,8 +87,8 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
     throw error;
   }
 
-  // Filter out non-cafe fields like business_hours, rejection_reason, is_featured, email, phone
-  const { business_hours, rejection_reason, is_featured, email, phone, ...validUpdateData } = updateData;
+  // Filter out non-cafe fields like business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours, google_reviews_link
+  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours, google_reviews_link, ...validUpdateData } = updateData;
 
   let result = await cafeRepository.updateCafe(cafeId, validUpdateData);
   
@@ -172,6 +172,12 @@ const addPackageToCafe = async (userId, cafeId, packageData) => {
     decoration, 
     music, 
     other, 
+    other_text,
+    food_items,
+    cake_items,
+    decoration_items,
+    music_items,
+    other_items,
     custom_category,
     terms,
     availableDays,
@@ -185,18 +191,51 @@ const addPackageToCafe = async (userId, cafeId, packageData) => {
     is_active
   } = packageData;
 
-  // Bundle inclusions
-  const mergedInclusions = {
-    ...(inclusions || {}),
-    event_type: event_type || custom_category || undefined,
-    custom_category: custom_category || undefined,
-    status: status || 'ACTIVE',
-    food: food !== undefined ? Boolean(food) : false,
-    cake: cake !== undefined ? Boolean(cake) : false,
-    decoration: decoration !== undefined ? Boolean(decoration) : false,
-    music: music !== undefined ? Boolean(music) : false,
-    other: other !== undefined ? Boolean(other) : false,
-  };
+  let mergedInclusions;
+  if (Array.isArray(inclusions)) {
+    mergedInclusions = inclusions.map((inc, idx) => {
+      const incId = inc.id || inc.inclusionId || inc.inclusion_id || `inc_${Date.now()}_${idx}`;
+      const tiers = Array.isArray(inc.tiers) ? inc.tiers.map((t, tIdx) => {
+        const tName = (t.tier_name || t.name || t.tierName || 'STANDARD').toUpperCase();
+        const tId = t.id || t.tier_id || t.tierId || `${incId}_tier_${tName.toLowerCase()}`;
+        return {
+          ...t,
+          id: tId,
+          tier_id: tId,
+          tierId: tId,
+          tier_name: tName,
+          tierName: tName,
+          unit_price: t.unit_price !== undefined ? Number(t.unit_price) : (t.unitPrice !== undefined ? Number(t.unitPrice) : 0),
+          pricing_type: String(t.pricing_type || t.pricingType || inc.pricing_type || 'FIXED').toUpperCase(),
+          description: t.description || null
+        };
+      }) : [];
+      return {
+        ...inc,
+        id: incId,
+        inclusion_id: incId,
+        tiers
+      };
+    });
+  } else {
+    mergedInclusions = {
+      ...(inclusions || {}),
+      event_type: event_type || custom_category || undefined,
+      custom_category: custom_category || undefined,
+      status: status || 'ACTIVE',
+      food: food !== undefined ? Boolean(food) : false,
+      cake: cake !== undefined ? Boolean(cake) : false,
+      decoration: decoration !== undefined ? Boolean(decoration) : false,
+      music: music !== undefined ? Boolean(music) : false,
+      other: other !== undefined ? Boolean(other) : false,
+      other_text: other_text || undefined,
+      food_items: food_items || [],
+      cake_items: cake_items || [],
+      decoration_items: decoration_items || [],
+      music_items: music_items || [],
+      other_items: other_items || []
+    };
+  }
 
   const validPrismaData = {
     cafe_id: cafeId,
@@ -247,6 +286,12 @@ const updatePackage = async (userId, packageId, updateData) => {
     decoration, 
     music, 
     other, 
+    other_text,
+    food_items,
+    cake_items,
+    decoration_items,
+    music_items,
+    other_items,
     custom_category,
     terms,
     availableDays,
@@ -260,19 +305,52 @@ const updatePackage = async (userId, packageId, updateData) => {
     is_active
   } = updateData;
 
-  const mergedInclusions = {
-    ...(typeof pkg.inclusions === 'object' && pkg.inclusions !== null ? pkg.inclusions : {}),
-    ...(inclusions || {}),
-  };
-  
-  if (event_type !== undefined) mergedInclusions.event_type = event_type;
-  if (custom_category !== undefined) mergedInclusions.custom_category = custom_category;
-  if (status !== undefined) mergedInclusions.status = status;
-  if (food !== undefined) mergedInclusions.food = Boolean(food);
-  if (cake !== undefined) mergedInclusions.cake = Boolean(cake);
-  if (decoration !== undefined) mergedInclusions.decoration = Boolean(decoration);
-  if (music !== undefined) mergedInclusions.music = Boolean(music);
-  if (other !== undefined) mergedInclusions.other = Boolean(other);
+  let mergedInclusions;
+  if (Array.isArray(inclusions)) {
+    mergedInclusions = inclusions.map((inc, idx) => {
+      const incId = inc.id || inc.inclusionId || inc.inclusion_id || `inc_${Date.now()}_${idx}`;
+      const tiers = Array.isArray(inc.tiers) ? inc.tiers.map((t, tIdx) => {
+        const tName = (t.tier_name || t.name || t.tierName || 'STANDARD').toUpperCase();
+        const tId = t.id || t.tier_id || t.tierId || `${incId}_tier_${tName.toLowerCase()}`;
+        return {
+          ...t,
+          id: tId,
+          tier_id: tId,
+          tierId: tId,
+          tier_name: tName,
+          tierName: tName,
+          unit_price: t.unit_price !== undefined ? Number(t.unit_price) : (t.unitPrice !== undefined ? Number(t.unitPrice) : 0),
+          pricing_type: String(t.pricing_type || t.pricingType || inc.pricing_type || 'FIXED').toUpperCase(),
+          description: t.description || null
+        };
+      }) : [];
+      return {
+        ...inc,
+        id: incId,
+        inclusion_id: incId,
+        tiers
+      };
+    });
+  } else {
+    mergedInclusions = {
+      ...(typeof pkg.inclusions === 'object' && pkg.inclusions !== null ? pkg.inclusions : {}),
+      ...(inclusions || {}),
+    };
+    if (event_type !== undefined) mergedInclusions.event_type = event_type;
+    if (custom_category !== undefined) mergedInclusions.custom_category = custom_category;
+    if (status !== undefined) mergedInclusions.status = status;
+    if (food !== undefined) mergedInclusions.food = Boolean(food);
+    if (cake !== undefined) mergedInclusions.cake = Boolean(cake);
+    if (decoration !== undefined) mergedInclusions.decoration = Boolean(decoration);
+    if (music !== undefined) mergedInclusions.music = Boolean(music);
+    if (other !== undefined) mergedInclusions.other = Boolean(other);
+    if (other_text !== undefined) mergedInclusions.other_text = other_text;
+    if (food_items !== undefined) mergedInclusions.food_items = food_items;
+    if (cake_items !== undefined) mergedInclusions.cake_items = cake_items;
+    if (decoration_items !== undefined) mergedInclusions.decoration_items = decoration_items;
+    if (music_items !== undefined) mergedInclusions.music_items = music_items;
+    if (other_items !== undefined) mergedInclusions.other_items = other_items;
+  }
 
   const validPrismaUpdate = { inclusions: mergedInclusions };
   if (package_name !== undefined) validPrismaUpdate.package_name = package_name;

@@ -7,44 +7,62 @@ const GST_PERCENTAGE = parseFloat(process.env.GST_PERCENTAGE || '5');
  * Calculates pricing breakdowns for a booking.
  * Recalculates subtotal, platform fee, GST, and total on backend.
  */
-const calculateBookingPrice = (booking) => {
-  if (booking && booking.total && Number(booking.total) > 0) {
-    return {
-      cafeAmount: Number(booking.cafe_amount || 0),
-      eventServiceAmount: Number(booking.event_service_amount || 0),
-      subtotal: Number(booking.subtotal || 0),
-      platformFeePercentage: 3,
-      platformFee: Number(booking.fahara_service_charge || 0),
-      transactionFee: Number(booking.transaction_fee || 0),
-      gstAmount: Number(booking.gst || 0),
-      total: Number(booking.total)
-    };
+/**
+ * Helper to calculate individual inclusion tier amounts and format strings.
+ */
+const calculateInclusionAmount = ({
+  inclusionId = null,
+  name = '',
+  tierId = null,
+  tierName = '',
+  pricingType = 'FIXED',
+  unitPrice = 0,
+  quantity = 1,
+  guestCount = 1,
+  providerType = 'CAFE'
+}) => {
+  const price = Number(unitPrice || 0);
+  const pType = String(pricingType || 'FIXED').toUpperCase();
+  const guests = Math.max(1, Number(guestCount || 1));
+  const qty = Math.max(1, Number(quantity || 1));
+
+  let calculatedAmount = 0;
+  let calculation = '';
+
+  if (pType === 'PER_GUEST') {
+    calculatedAmount = Number((price * guests).toFixed(2));
+    calculation = `₹${price} × ${guests} guests = ₹${calculatedAmount}`;
+  } else if (pType === 'PER_UNIT') {
+    calculatedAmount = Number((price * qty).toFixed(2));
+    calculation = `₹${price} × ${qty} units = ₹${calculatedAmount}`;
+  } else {
+    // FIXED
+    calculatedAmount = Number((price * 1).toFixed(2));
+    calculation = `₹${price} × 1 = ₹${calculatedAmount}`;
   }
 
-  const cafeAmount = Number(booking.cafe_amount || 0);
-  const eventServiceAmount = Number(booking.event_service_amount || 0);
-  const foodAmount = Number(booking.food_amount || 0);
-  const decorationAmount = Number(booking.decoration_amount || 0);
-  const extraPersonAmount = Number(booking.extra_person_amount || 0);
-  const discount = Number(booking.discount || 0);
-
-  const subtotal = Number(booking.subtotal || (cafeAmount + eventServiceAmount + foodAmount + decorationAmount + extraPersonAmount - discount));
-  const platformFee = Number((subtotal * 0.03).toFixed(2));
-  const transactionFee = Number((subtotal * 0.03).toFixed(2));
-  const gstAmount = Number((transactionFee * 0.18).toFixed(2));
-  const total = Number((subtotal + platformFee + transactionFee + gstAmount).toFixed(2));
-
   return {
-    cafeAmount,
-    eventServiceAmount,
-    subtotal,
-    platformFeePercentage: 3,
-    platformFee,
-    transactionFee,
-    gstPercentage: 18,
-    gstAmount,
-    total
+    inclusionId: inclusionId || null,
+    name: name || 'Inclusion',
+    tierId: tierId || null,
+    tierName: tierName || '',
+    pricingType: pType,
+    unitPrice: price,
+    quantity: pType === 'PER_GUEST' ? guests : qty,
+    calculatedAmount,
+    calculation,
+    providerType: providerType || 'CAFE'
   };
+};
+
+/**
+ * Calculates authoritative pricing breakdowns for a booking.
+ * Recalculates subtotal, platform fee, GST, and total on backend.
+ */
+const calculateBookingPrice = async (booking) => {
+  if (!booking) return null;
+  const pricingEngine = require('./pricingEngine');
+  return await pricingEngine.calculateBookingPricing(booking.id);
 };
 
 /**
@@ -54,16 +72,23 @@ const prepareSplits = async (booking, totalAmount) => {
   const cafe = booking.cafes;
   const eventService = booking.event_services;
 
+  const pricingEngine = require('./pricingEngine');
+  const pricing = await pricingEngine.calculateBookingPricing(booking.id);
+  const effectiveTotal = pricing ? pricing.grandTotal : Number(totalAmount || 0);
+
   const razorpaySplits = [];
   const dbSplitRecords = [];
 
-  const eventServiceAmount = Number(booking.event_service_amount || 0);
-  const cafeAmount = Number(booking.subtotal || totalAmount) - (booking.package_id && !eventService ? 0 : eventServiceAmount);
+  // Calculate Cafe Share: Sum of all CAFE booking items
+  const cafeAmount = Number((pricing?.cafe?.subtotal || 0).toFixed(2));
+
+  // Calculate Event Manager Share: Sum of all EVENT booking items
+  const eventServiceAmount = Number((pricing?.event?.subtotal || 0).toFixed(2));
 
   // 1. Cafe Split
   const cafeAccountId = cafe?.payment_account_id || cafe?.razorpay_linked_account_id || cafe?.razorpay_account_id;
   const cafeVendorId = cafe?.owner_id || cafe?.id || null;
-  if (cafeAccountId) {
+  if (cafeAccountId && cafeAmount > 0) {
     razorpaySplits.push({
       account: cafeAccountId,
       amount: Math.round(cafeAmount * 100),
@@ -123,9 +148,8 @@ const prepareSplits = async (booking, totalAmount) => {
     }
   }
 
-  // 3. Fahara Platform Share
-  const totalVendorShare = cafeAmount + (eventService && eventServiceAmount > 0 ? eventServiceAmount : 0);
-  const faharaShare = Number((totalAmount - totalVendorShare).toFixed(2));
+  // 3. Fahara Platform Share (Fees + GST)
+  const faharaShare = Number((effectiveTotal - cafeAmount - eventServiceAmount).toFixed(2));
 
   dbSplitRecords.push({
     vendor_type: 'FAHARA',

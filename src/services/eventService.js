@@ -5,8 +5,17 @@ const createEventService = async (userId, serviceData) => {
   // Ensure the user has an event profile provisioned
   await eventProfileRepository.getOrCreateProfileByUserId(userId);
 
+  // Normalize inclusions: ensure it's stored as a parsed JSON array, not a string
+  const data = { ...serviceData };
+  if (data.inclusions !== undefined) {
+    if (typeof data.inclusions === 'string') {
+      try { data.inclusions = JSON.parse(data.inclusions); } catch(e) { data.inclusions = []; }
+    }
+    // Already an array — pass through as-is (Prisma Json? accepts plain JS arrays)
+  }
+
   return await eventServiceRepository.createEventService({
-    ...serviceData,
+    ...data,
     user_id: userId,
   });
 };
@@ -35,7 +44,15 @@ const updateEventService = async (userId, serviceId, updateData) => {
     throw error;
   }
 
-  return await eventServiceRepository.updateEventService(serviceId, updateData);
+  // Normalize inclusions before update
+  const data = { ...updateData };
+  if (data.inclusions !== undefined) {
+    if (typeof data.inclusions === 'string') {
+      try { data.inclusions = JSON.parse(data.inclusions); } catch(e) { data.inclusions = []; }
+    }
+  }
+
+  return await eventServiceRepository.updateEventService(serviceId, data);
 };
 
 const deleteEventService = async (userId, serviceId) => {
