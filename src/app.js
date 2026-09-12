@@ -29,6 +29,10 @@ app.use(cors({
   origin: (origin, callback) => callback(null, true),
   credentials: true
 }));
+app.use((req, res, next) => {
+  res.setHeader('bypass-tunnel-reminder', 'true');
+  next();
+});
 app.use(express.json({
   limit: '50mb',
   verify: (req, res, buf) => {

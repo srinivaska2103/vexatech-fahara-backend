@@ -267,8 +267,25 @@ const updateEventPaymentAccount = async (userId, bankPayload) => {
   };
 };
 
+const getAllProfiles = async (query = {}) => {
+  const list = await eventProfileRepository.getAllProfiles(query);
+  return list.map(formatProfileResponse);
+};
+
+const getProfileById = async (id) => {
+  const profile = await eventProfileRepository.getProfileById(id);
+  if (!profile) {
+    const error = new Error('Event profile not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  return formatProfileResponse(profile);
+};
+
 module.exports = {
   getProfile,
+  getAllProfiles,
+  getProfileById,
   createProfile,
   updateProfile,
   updateBusinessHours,

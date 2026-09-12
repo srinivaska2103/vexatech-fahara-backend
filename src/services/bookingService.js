@@ -191,9 +191,21 @@ const createBooking = async (userId, data) => {
       // Each item must have inclusionId + tierId.
       // ─────────────────────────────────────────────────────────────────
       const normalizeBookingInclusions = (rawInput) => {
-        if (!Array.isArray(rawInput) || rawInput.length === 0) return [];
-        return rawInput.map((item, idx) => {
-          const inclusionId = item.inclusionId || item.inclusion_id || null;
+        if (!rawInput) return [];
+        let items = rawInput;
+        if (typeof items === 'string') {
+          try { items = JSON.parse(items); } catch(e) { items = []; }
+        }
+        if (typeof items === 'object' && !Array.isArray(items) && items !== null) {
+          items = Object.values(items);
+        }
+        if (!Array.isArray(items) || items.length === 0) return [];
+        return items.map((item, idx) => {
+          if (typeof item === 'string') {
+            return { inclusionId: item, tierId: null, tierName: null, quantity: 1, _raw: item };
+          }
+          if (typeof item !== 'object' || item === null) return null;
+          const inclusionId = item.inclusionId || item.inclusion_id || item.id || null;
           const tierId = item.tierId || item.tier_id ||
             // fallback: item.id if it looks like a tier id (has _ suffix after the base incId)
             (item.id && inclusionId && item.id !== inclusionId ? item.id : null);
@@ -207,7 +219,7 @@ const createBooking = async (userId, data) => {
           };
           console.log(`[FAHARA INC-NORMALIZED] [${idx}] inclusionId=${inclusionId} | tierId=${tierId} | tierName=${normalized.tierName} | name=${item.name || item.inclusionName}`);
           return normalized;
-        }).filter(n => n.inclusionId); // discard items with no inclusionId
+        }).filter(n => n && (n.inclusionId || n._raw)); // discard completely empty items
       };
 
       // Extract client inclusion payload if provided
@@ -421,7 +433,7 @@ const createBooking = async (userId, data) => {
       }
 
       if (matchedProviderType === 'CAFE') {
-        package_add_on_charge = packageInclusionsTotal;
+        package_add_on_charge += packageInclusionsTotal;
       } else {
         event_service_amount += packageInclusionsTotal;
       }
@@ -444,8 +456,8 @@ const createBooking = async (userId, data) => {
     });
   }
 
-  let cafe_amount = base_cafe_charge;
-  let final_food_amount = package_add_on_charge + addOnsTotal;
+  let cafe_amount = base_cafe_charge + (matchedProviderType === 'CAFE' ? package_add_on_charge : 0);
+  let final_food_amount = addOnsTotal;
   let final_decoration_amount = 0;
   let final_extra_person_amount = 0;
 
@@ -593,9 +605,9 @@ const createBooking = async (userId, data) => {
   const itemsToCreate = [];
   
   // Cafe charge item if present
-  if (cafe_amount > 0) {
+  if (base_cafe_charge > 0) {
     const pricePerHour = Number(cafe.price_per_hour || 0);
-    const cafeChargeUnitPrice = pricePerHour > 0 ? pricePerHour : cafe_amount;
+    const cafeChargeUnitPrice = pricePerHour > 0 ? pricePerHour : base_cafe_charge;
     const cafeChargeQty = pricePerHour > 0 ? Math.max(1, Number(hours || 1)) : 1;
     itemsToCreate.push({
       booking_id: createdBooking.id,
@@ -606,7 +618,7 @@ const createBooking = async (userId, data) => {
       pricing_type: 'FIXED',
       unit_price: cafeChargeUnitPrice,
       quantity: cafeChargeQty,
-      amount: cafe_amount,
+      amount: base_cafe_charge,
       description: `${hours} hours booking`
     });
   }
@@ -747,7 +759,23 @@ const createBooking = async (userId, data) => {
 };
 
 const getMyBookings = async (userId) => {
-  return await bookingRepository.getBookingsByCustomer(userId);
+  const rawBookings = await bookingRepository.getBookingsByCustomer(userId);
+  return rawBookings.map((b) => ({
+    ...b,
+    id: b.id,
+    booking_number: b.booking_number || b.id,
+    booking_status: b.booking_status || b.status || 'CONFIRMED',
+    status: b.booking_status || b.status || 'CONFIRMED',
+    payment_status: b.payment_status || 'PAID',
+    cafe: b.cafes || b.cafe || null,
+    cafes: b.cafes || b.cafe || null,
+    event_service: b.event_services || b.event_service || null,
+    event_services: b.event_services || b.event_service || null,
+    booking_date: b.booking_date,
+    total_persons: b.total_persons || b.guests || 2,
+    total: Number(b.grand_total || b.total_amount || b.total || 0),
+    total_amount: Number(b.grand_total || b.total_amount || b.total || 0),
+  }));
 };
 
 const getCafeBookings = async (ownerId, query = {}, userRole = 'CAFE_OWNER') => {
@@ -760,13 +788,16 @@ const getCafeBookings = async (ownerId, query = {}, userRole = 'CAFE_OWNER') => 
   // Frontend expects mapped format
   return bookings.map(b => {
     let cafeNet = Number(b.cafe_amount || 0);
-    if (cafeNet === 0 && Array.isArray(b.booking_items)) {
-      cafeNet = b.booking_items
-        .filter(it => it.provider_type === 'CAFE' || it.item_type === 'CAFE_CHARGE' || it.item_type === 'CAFE_INCLUSION')
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    let itemizedCafeTotal = 0;
+    if (Array.isArray(b.booking_items) && b.booking_items.length > 0) {
+      const cafeItems = b.booking_items.filter(it => it.provider_type === 'CAFE' || it.item_type === 'CAFE_INCLUSION' || it.item_type === 'CAFE_CHARGE' || it.item_type === 'PACKAGE' || it.item_type === 'PACKAGE_BASE');
+      itemizedCafeTotal = cafeItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     }
-    if (cafeNet === 0 && b.subtotal !== undefined && b.subtotal !== null) {
-      const calcSub = Number(b.subtotal || 0);
+    if (itemizedCafeTotal > 0) {
+      cafeNet = Math.max(cafeNet, itemizedCafeTotal);
+    }
+    if (cafeNet === 0 && (b.subtotal || b.total)) {
+      const calcSub = Number(b.total || b.subtotal || 0);
       const evAmt = Number(b.event_service_amount || 0);
       cafeNet = calcSub >= evAmt ? (calcSub - evAmt) : calcSub;
     }
@@ -774,7 +805,7 @@ const getCafeBookings = async (ownerId, query = {}, userRole = 'CAFE_OWNER') => 
 
     const calculatedAmount = userRole === 'EVENT_MANAGER'
       ? Number(b.event_service_amount || 0)
-      : cafeNet;
+      : (cafeNet > 0 ? cafeNet : Number(b.total || b.subtotal || 0));
 
     return {
       id: b.id,

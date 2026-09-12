@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+
 const getProfileByUserId = async (userId) => {
   const profile = await prisma.event_management_profiles.findUnique({
     where: { user_id: userId },
@@ -31,6 +32,38 @@ const getOrCreateProfileByUserId = async (userId) => {
     });
   }
   return profile;
+};
+
+const getAllProfiles = async (query = {}) => {
+  const where = {};
+  if (query.search || query.query) {
+    const q = query.search || query.query;
+    where.OR = [
+      { company_name: { contains: q, mode: 'insensitive' } },
+      { city: { contains: q, mode: 'insensitive' } },
+      { description: { contains: q, mode: 'insensitive' } }
+    ];
+  }
+  return await prisma.event_management_profiles.findMany({
+    where,
+    include: {
+      users: {
+        select: { name: true, email: true, phone: true }
+      }
+    },
+    orderBy: { created_at: 'desc' }
+  });
+};
+
+const getProfileById = async (id) => {
+  return await prisma.event_management_profiles.findUnique({
+    where: { id },
+    include: {
+      users: {
+        select: { name: true, email: true, phone: true }
+      }
+    }
+  });
 };
 
 const createProfile = async (profileData) => {
@@ -92,6 +125,8 @@ const updateEventBusinessHours = async (userId, businessHours) => {
 module.exports = {
   getProfileByUserId,
   getOrCreateProfileByUserId,
+  getAllProfiles,
+  getProfileById,
   createProfile,
   updateProfile,
   updateEventBusinessHours

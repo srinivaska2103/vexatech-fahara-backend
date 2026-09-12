@@ -71,7 +71,9 @@ const profileSchema = Joi.object({
  *       200:
  *         description: Event profile details
  */
+router.get('/', eventProfileController.getAllProfiles);
 router.get('/me', protect, authorizeRoles('EVENT_MANAGER'), eventProfileController.getProfile);
+router.get('/:id', eventProfileController.getProfileById);
 
 /**
  * @swagger

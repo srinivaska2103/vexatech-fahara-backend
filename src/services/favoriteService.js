@@ -7,7 +7,7 @@ const getFavorites = async (userId) => {
       cafes: {
         include: {
           cafe_packages: true,
-          cafe_images: true,
+          reviews: true,
         }
       }
     },

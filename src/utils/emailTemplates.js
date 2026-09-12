@@ -355,12 +355,11 @@ const getBookingConfirmedCustomerTemplate = (name, bookingId, summaryItems, book
   });
 };
 
-// 5. Booking Confirmed (Admin / Event Management)
 const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bookingDbId = null, isEventManager = false) => {
   const targetId = bookingDbId || bookingId;
   const ctaUrl = isEventManager 
     ? `${EM_FRONTEND_URL}/event/bookings/${targetId}` 
-    : `${CAFE_FRONTEND_URL}/owner/bookings/${targetId}`;
+    : `${ADMIN_FRONTEND_URL}/admin/bookings`;
 
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${adminName},</p>
@@ -683,6 +682,45 @@ const getNewAccountNotificationTemplate = (user) => {
   });
 };
 
+// 15. Birthday Promotional Offer Template (30 Days Before Birthday)
+const getBirthdayPromotionalTemplate = (name) => {
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${name || 'Valued Guest'},</p>
+    
+    <div style="background: linear-gradient(135deg, #FFF8F0 0%, #FAF0E6 100%); border: 2px dashed #DDB892; padding: 24px; border-radius: 16px; text-align: center; margin: 20px 0;">
+      <p style="font-size: 13px; color: #6F4E37; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 6px 0;">🎉 Birthday Celebration Reminder from Fahara!</p>
+      <h2 style="font-size: 22px; color: #2C1810; margin: 8px 0; font-weight: 800;">Your Birthday is 30 Days Away! 🎂</h2>
+      <p style="font-size: 15px; color: #555555; margin: 12px 0 18px 0; line-height: 1.6;">
+        Celebrate your birthday in style! Reserve your spot at Fahara cafes and get exciting birthday offers, custom decorations, and exclusive perks.
+      </p>
+      
+      <div style="background-color: #ffffff; border: 1px solid #E8DED5; padding: 14px 20px; border-radius: 12px; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+        <span style="font-size: 15px; color: #6F4E37; font-weight: 800; display: block;">✨ Special Birthday Perks & Offers Available in Cafe</span>
+        <span style="display: block; font-size: 13px; color: #7A6053; font-weight: 600; margin-top: 4px;">Book in advance to claim your birthday surprise!</span>
+      </div>
+    </div>
+
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Whether you are planning an intimate cafe gather-up or a grand party setup with custom inclusions, Fahara is here to make your special day unforgettable!
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Event Type', value: 'Birthday Celebration 🎂' },
+    { label: 'Special Offer', value: 'Exclusive Birthday Perks in Cafe', isHighlight: true },
+    { label: 'Valid For', value: 'Cafe & Event Bookings' }
+  ];
+
+  return generateBaseTemplate({
+    title: 'Celebrate Your Birthday with Fahara 🎂',
+    bodyHtml,
+    summaryItems,
+    ctaLink: `${FRONTEND_URL}/customer/cafe`,
+    ctaText: 'Explore Cafes & Book Venue'
+  });
+};
+
+
 module.exports = {
   getOtpTemplate,
   getResetPasswordTemplate,
@@ -701,7 +739,9 @@ module.exports = {
   getBankVerifiedTemplate,
   getEntityRejectedTemplate,
   getSettlementCompletedTemplate,
-  getNewAccountNotificationTemplate
+  getNewAccountNotificationTemplate,
+  getBirthdayPromotionalTemplate
 };
+
 
 

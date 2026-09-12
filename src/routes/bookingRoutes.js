@@ -25,33 +25,8 @@ const bookingSchema = Joi.object({
   special_request: Joi.string().allow('', null),
   event_special_request: Joi.string().allow('', null),
   redeemed_credits: Joi.number().min(0).allow(null).default(0),
-  // ── inclusions: array of selected tier objects from the frontend ──
-  inclusions: Joi.array().items(
-    Joi.object({
-      // canonical fields
-      inclusionId: Joi.string().allow(null, ''),
-      tierId: Joi.string().allow(null, ''),
-      quantity: Joi.number().integer().min(1).default(1),
-      // legacy / alias fields — all preserved so normalizer can pick the right one
-      inclusion_id: Joi.string().allow(null, ''),
-      tier_id: Joi.string().allow(null, ''),
-      id: Joi.string().allow(null, ''),
-      name: Joi.string().allow(null, ''),
-      price: Joi.number().allow(null),
-      unitPrice: Joi.number().allow(null),
-      unit_price: Joi.number().allow(null),
-      pricing_type: Joi.string().allow(null, ''),
-      pricingType: Joi.string().allow(null, ''),
-      description: Joi.string().allow(null, ''),
-      tier_name: Joi.string().allow(null, ''),
-      tierName: Joi.string().allow(null, ''),
-      level: Joi.string().allow(null, ''),
-      tierLevel: Joi.string().allow(null, ''),
-      inclusionName: Joi.string().allow(null, ''),
-      inclusion_name: Joi.string().allow(null, ''),
-      tierItemName: Joi.string().allow(null, ''),
-    }).unknown(true)  // allow any extra debug fields the frontend sends
-  ).allow(null).default(null),
+  // ── inclusions: accept any array, object, string, or null ──
+  inclusions: Joi.any().allow(null).default(null),
   // ── optional add-ons (future use) ──
   selected_add_ons: Joi.array().items(Joi.object().unknown(true)).allow(null).default(null),
 });
@@ -268,6 +243,7 @@ router.patch('/:id/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OW
  *         description: Booking not found
  */
 router.patch('/:id/cancel', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'), bookingController.cancelBooking);
+router.post('/:id/cancel', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'), bookingController.cancelBooking);
 
 /**
  * @swagger

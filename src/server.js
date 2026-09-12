@@ -1,6 +1,7 @@
 require('dotenv').config();
 const app = require('./app');
 const { startBookingStatusCron } = require('./utils/bookingStatusCron');
+const { startBirthdayPromotionCron } = require('./utils/birthdayPromotionCron');
 
 const PORT = process.env.PORT || 5000;
 
@@ -40,9 +41,11 @@ const server = http.createServer(app);
 
 initSocket(server);
 
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT} with WebSockets enabled`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT} bound to 0.0.0.0 with WebSockets enabled`);
   // Start scheduled jobs
   startBookingStatusCron();
+  startBirthdayPromotionCron();
 });
+
 

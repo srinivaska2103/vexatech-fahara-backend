@@ -122,9 +122,26 @@ const getBookingsByCustomer = async (customerId) => {
   const bookings = await prisma.bookings.findMany({
     where: { customer_id: customerId },
     include: {
-      cafes: { select: { name: true } },
+      cafes: {
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          address: true,
+          cover_image: true,
+          gallery: true,
+          category: true,
+        },
+      },
+      event_services: {
+        select: {
+          id: true,
+          service_name: true,
+          gallery: true,
+        },
+      },
     },
-    orderBy: { created_at: 'desc' }
+    orderBy: { created_at: 'desc' },
   });
 
   // Collect package IDs and batch fetch

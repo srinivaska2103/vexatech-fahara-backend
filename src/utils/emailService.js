@@ -158,6 +158,15 @@ const sendSettlementCompletedEmail = async ({ email, name, amount, bookingNumber
   await sendEmail(email, subject, text, html);
 };
 
+const sendBirthdayPromotionalEmail = async (email, name) => {
+  const subject = `🎉 Celebrate Your Birthday with Fahara! Special Cafe Offers Inside 🎂`;
+  const text = `Hi ${name || 'Valued Guest'},\n\nYour birthday is just 30 days away! Celebrate your birthday with Fahara and get special birthday offers at cafes.\n\nBook now at https://fahara.in`;
+  const html = templates.getBirthdayPromotionalTemplate(name);
+
+  await sendEmail(email, subject, text, html);
+};
+
+
 module.exports = {
   getAdminEmail,
   sendOtpEmail,
@@ -173,6 +182,8 @@ module.exports = {
   sendEntityRejectedEmail,
   sendSupportTicketEmailToAdmin,
   sendSettlementCompletedEmail,
+  sendBirthdayPromotionalEmail,
   templates
 };
+
 

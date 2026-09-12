@@ -81,8 +81,28 @@ const updatePaymentAccount = async (req, res, next) => {
   }
 };
 
+const getAllProfiles = async (req, res, next) => {
+  try {
+    const result = await eventProfileService.getAllProfiles(req.query);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getProfileById = async (req, res, next) => {
+  try {
+    const result = await eventProfileService.getProfileById(req.params.id);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProfile,
+  getAllProfiles,
+  getProfileById,
   createProfile,
   updateProfile,
   updateBusinessHours,

@@ -1,40 +1,4 @@
-PrismaClientValidationError: 
-Invalid `prisma.favorites.findMany()` invocation in
-D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:4:39
-
-  1 const prisma = require('../config/prisma');
-  2 
-  3 const getFavorites = async (userId) => {
-→ 4   const favs = await prisma.favorites.findMany({
-        where: {
-          user_id: "0f692d42-ca09-481d-83af-c002b8ef3062"
-        },
-        include: {
-          cafes: {
-            include: {
-              cafe_packages: true,
-              cafe_images: true,
-              ~~~~~~~~~~~
-      ?       bookings?: true,
-      ?       cafe_business_hours?: true,
-      ?       users?: true,
-      ?       favorites?: true,
-      ?       reviews?: true,
-      ?       cafe_tables?: true
-            }
-          }
-        },
-        orderBy: {
-          created_at: "desc"
-        }
-      })
-
-Unknown field `cafe_images` for include statement on model `cafes`. Available options are marked with ?.
-    at ar (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:10:1374)
-    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7929)
-    at zr.handleAndLogRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
-    at zr.request (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
+Error: Invalid email or password
+    at Object.login (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\authService.js:155:19)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async a (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
-    at async Object.getFavorites (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:4:16)
-    at async getFavorites (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\favoriteController.js:5:18)
+    at async login (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\authController.js:28:20)
