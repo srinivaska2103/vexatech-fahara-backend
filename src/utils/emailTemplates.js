@@ -1,8 +1,19 @@
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fahara.in';
-const CAFE_FRONTEND_URL = process.env.CAFE_FRONTEND_URL || 'https://cafe.fahara.in';
-const EM_FRONTEND_URL = process.env.EM_FRONTEND_URL || 'https://em.fahara.in';
-const ADMIN_FRONTEND_URL = process.env.ADMIN_FRONTEND_URL || 'https://admin.fahara.in';
-const BACKEND_URL = process.env.BACKEND_URL || 'https://api.fahara.in';
+const sanitizeUrl = (url, fallback) => {
+  const val = url || fallback;
+  if (!val || typeof val !== 'string') return fallback;
+  return val.replace(/http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/gi, (match) => {
+    if (val.includes('admin')) return 'https://admin.fahara.in';
+    if (val.includes('owner') || val.includes('cafe')) return 'https://cafe.fahara.in';
+    if (val.includes('event') || val.includes('em.')) return 'https://em.fahara.in';
+    return 'https://fahara.in';
+  });
+};
+
+const FRONTEND_URL = sanitizeUrl(process.env.FRONTEND_URL, 'https://fahara.in');
+const CAFE_FRONTEND_URL = sanitizeUrl(process.env.CAFE_FRONTEND_URL, 'https://cafe.fahara.in');
+const EM_FRONTEND_URL = sanitizeUrl(process.env.EM_FRONTEND_URL, 'https://em.fahara.in');
+const ADMIN_FRONTEND_URL = sanitizeUrl(process.env.ADMIN_FRONTEND_URL, 'https://admin.fahara.in');
+const BACKEND_URL = sanitizeUrl(process.env.BACKEND_URL, 'https://api.fahara.in');
 
 // Professional Vector SVG Icon Generator
 const getVectorIcon = (name) => {
@@ -157,9 +168,10 @@ const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = 
     </div>
   ` : '';
 
-  const ctaBtnHtml = ctaLink ? `
+  const cleanCtaLink = ctaLink ? sanitizeUrl(ctaLink, 'https://fahara.in') : '';
+  const ctaBtnHtml = cleanCtaLink ? `
     <div style="text-align: center; margin: 24px 0 24px 0;">
-      <a href="${ctaLink}" target="_blank" style="background: linear-gradient(135deg, #2C1810 0%, #4A2C11 50%, #6F4E37 100%); color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 800; display: inline-block; box-shadow: 0 6px 18px rgba(44, 24, 16, 0.25); letter-spacing: 0.5px;">
+      <a href="${cleanCtaLink}" target="_blank" style="background: linear-gradient(135deg, #2C1810 0%, #4A2C11 50%, #6F4E37 100%); color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 800; display: inline-block; box-shadow: 0 6px 18px rgba(44, 24, 16, 0.25); letter-spacing: 0.5px;">
         ${ctaText} →
       </a>
     </div>

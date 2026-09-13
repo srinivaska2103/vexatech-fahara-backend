@@ -1,4 +1,11 @@
-Error: Invalid email or password
-    at Object.login (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\authService.js:155:19)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async login (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\authController.js:28:20)
+Error: cafeId is required
+    at Object.toggleFavorite (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:31:19)
+    at toggleFavorite (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\favoriteController.js:25:42)
+    at Layer.handleRequest (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\layer.js:152:17)
+    at next (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\route.js:117:3)
+    at handle (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\index.js:435:11)
+    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\core\build\cjs\integrations\express\patch-layer.js:109:36
+    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\opentelemetry\build\cjs\asyncContextStrategy-DP1H8zYV.js:642:40
+    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\opentelemetry\build\cjs\asyncContextStrategy-DP1H8zYV.js:627:15
+    at Module.handleCallbackErrors (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\core\build\cjs\utils\handleCallbackErrors.js:11:26)
