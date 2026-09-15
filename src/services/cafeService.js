@@ -13,8 +13,33 @@ const createCafe = async (userId, cafeData) => {
     throw error;
   }
 
-  const { business_hours, email, phone, state, country, pincode, working_hrs, workingHours, google_reviews_link, ...validCafeData } = cafeData;
+  const { business_hours, email, phone, state, country, pincode, working_hrs, workingHours, ...validCafeData } = cafeData;
   
+  // Check owner role to determine default walking cafe status
+  const userRecord = await userRepository.findUserById(userId);
+  const isWalkingOwner = userRecord?.roles?.name === 'WALKING_CAFE_OWNER' || String(userRecord?.roles?.name || '').includes('WALKING');
+  
+  const isWalking = validCafeData.is_walking_cafe === true || isWalkingOwner || validCafeData.category === 'Walking Cafe';
+  
+  if (isWalking) {
+    validCafeData.is_walking_cafe = true;
+    validCafeData.walk_in = true;
+    validCafeData.table_reservation = false;
+    validCafeData.event_booking = false;
+    validCafeData.event_packages = false;
+    validCafeData.event_facilities = false;
+    validCafeData.price_per_hour = null;
+    validCafeData.provides_event_services = false;
+    validCafeData.allow_third_party_decoration = false;
+    validCafeData.capabilities = {
+      walk_in: true,
+      table_reservation: false,
+      event_booking: false,
+      event_packages: false,
+      event_facilities: false
+    };
+  }
+
   let cafe = await cafeRepository.createCafe({
     ...validCafeData,
     owner_id: userId,
@@ -87,8 +112,29 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
     throw error;
   }
 
-  // Filter out non-cafe fields like business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours, google_reviews_link
-  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours, google_reviews_link, ...validUpdateData } = updateData;
+  // Filter out non-cafe fields like business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours
+  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours, ...validUpdateData } = updateData;
+
+  const isWalking = validUpdateData.is_walking_cafe === true || cafe.is_walking_cafe === true || userRole === 'WALKING_CAFE_OWNER' || validUpdateData.category === 'Walking Cafe';
+
+  if (isWalking) {
+    validUpdateData.is_walking_cafe = true;
+    validUpdateData.walk_in = true;
+    validUpdateData.table_reservation = false;
+    validUpdateData.event_booking = false;
+    validUpdateData.event_packages = false;
+    validUpdateData.event_facilities = false;
+    validUpdateData.price_per_hour = null;
+    validUpdateData.provides_event_services = false;
+    validUpdateData.allow_third_party_decoration = false;
+    validUpdateData.capabilities = {
+      walk_in: true,
+      table_reservation: false,
+      event_booking: false,
+      event_packages: false,
+      event_facilities: false
+    };
+  }
 
   let result = await cafeRepository.updateCafe(cafeId, validUpdateData);
   

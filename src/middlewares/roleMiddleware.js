@@ -4,10 +4,20 @@ const authorizeRoles = (...roles) => {
       return res.status(403).json({ success: false, message: 'Forbidden: No role assigned' });
     }
 
-    if (!roles.includes(req.user.roles.name)) {
+    const userRole = req.user.roles.name;
+
+    let allowed = roles.includes(userRole);
+    if (!allowed && roles.includes('CAFE_OWNER') && userRole === 'WALKING_CAFE_OWNER') {
+      allowed = true;
+    }
+    if (!allowed && roles.includes('WALKING_CAFE_OWNER') && userRole === 'CAFE_OWNER') {
+      allowed = true;
+    }
+
+    if (!allowed) {
       return res.status(403).json({ 
         success: false, 
-        message: `Forbidden: User role ${req.user.roles.name} is not authorized` 
+        message: `Forbidden: User role ${userRole} is not authorized` 
       });
     }
     

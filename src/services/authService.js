@@ -19,7 +19,7 @@ const registerUser = async (userData) => {
   let existingUser = await userRepository.findUserByEmail(email);
   if (existingUser) {
     const existingRole = (existingUser.roles?.name || '').toUpperCase();
-    const isPartner = existingRole === 'CAFE_OWNER' || existingRole === 'RESTAURANT_OWNER' || existingRole === 'EVENT_MANAGER';
+    const isPartner = existingRole === 'CAFE_OWNER' || existingRole === 'WALKING_CAFE_OWNER' || existingRole === 'RESTAURANT_OWNER' || existingRole === 'EVENT_MANAGER';
     if (isPartner && (roleName || 'CUSTOMER').toUpperCase() === 'CUSTOMER') {
       const error = new Error('An account with this email address is already registered as a Venue Owner or Event Manager and cannot be registered as a Customer.');
       error.statusCode = 400;
@@ -178,30 +178,13 @@ const login = async (emailInput, password, expectedRole, clientIp) => {
   const roleName = (user.roles?.name || '').toUpperCase();
   const isPartnerAccount = 
     roleName === 'CAFE_OWNER' || 
+    roleName === 'WALKING_CAFE_OWNER' || 
     roleName === 'RESTAURANT_OWNER' || 
     roleName === 'EVENT_MANAGER' || 
     (user.cafes && user.cafes.length > 0) || 
     (user.event_management_profiles && user.event_management_profiles.length > 0);
 
   const targetRole = expectedRole ? String(expectedRole).toUpperCase() : null;
-
-  if (targetRole === 'ADMIN' && roleName !== 'ADMIN') {
-    const error = new Error('Access denied. Admin privileges required.');
-    error.statusCode = 403;
-    throw error;
-  }
-
-  if (targetRole === 'CUSTOMER' && isPartnerAccount) {
-    const error = new Error('Accounts created as Cafe/Restaurant Owner or Event Manager are not permitted to log in as Customer. Please use the Partner portal.');
-    error.statusCode = 403;
-    throw error;
-  }
-
-  if ((targetRole === 'CAFE_OWNER' || targetRole === 'RESTAURANT_OWNER' || targetRole === 'EVENT_MANAGER' || targetRole === 'PARTNER') && roleName === 'CUSTOMER' && !isPartnerAccount) {
-    const error = new Error('Customer accounts are not permitted to log in to the Partner portal. Please use the Customer portal.');
-    error.statusCode = 403;
-    throw error;
-  }
 
   if (roleName === 'ADMIN' && !password) {
     return await sendAdminLoginOtp(email, null, clientIp);
@@ -217,6 +200,30 @@ const login = async (emailInput, password, expectedRole, clientIp) => {
 
   // Reset IP attempts on successful password check
   resetFailedAttempts(clientIp);
+
+  if (targetRole === 'ADMIN' && roleName !== 'ADMIN') {
+    const error = new Error("You don't have permission to login in this portal");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (targetRole === 'CUSTOMER' && isPartnerAccount) {
+    const error = new Error("You don't have permission to login in this portal");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if ((targetRole === 'CAFE_OWNER' || targetRole === 'WALKING_CAFE_OWNER' || targetRole === 'RESTAURANT_OWNER' || targetRole === 'EVENT_MANAGER' || targetRole === 'PARTNER') && roleName === 'CUSTOMER' && !isPartnerAccount) {
+    const error = new Error("You don't have permission to login in this portal");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (targetRole && targetRole !== 'PARTNER' && roleName !== 'ADMIN' && targetRole !== roleName) {
+    const error = new Error("You don't have permission to login in this portal");
+    error.statusCode = 403;
+    throw error;
+  }
 
   // If Admin user attempts login, enforce 2FA OTP requirement
   if (roleName === 'ADMIN') {
@@ -385,6 +392,7 @@ const forgotPassword = async (emailInput, expectedRole) => {
   const roleName = (user.roles?.name || '').toUpperCase();
   const isPartnerAccount = 
     roleName === 'CAFE_OWNER' || 
+    roleName === 'WALKING_CAFE_OWNER' || 
     roleName === 'EVENT_MANAGER' || 
     (user.cafes && user.cafes.length > 0) || 
     (user.event_management_profiles && user.event_management_profiles.length > 0);
@@ -403,8 +411,23 @@ const forgotPassword = async (emailInput, expectedRole) => {
     throw error;
   }
 
-  if ((targetRole === 'CAFE_OWNER' || targetRole === 'EVENT_MANAGER' || targetRole === 'PARTNER') && roleName === 'CUSTOMER' && !isPartnerAccount) {
+  if ((targetRole === 'CAFE_OWNER' || targetRole === 'WALKING_CAFE_OWNER' || targetRole === 'RESTAURANT_OWNER' || targetRole === 'EVENT_MANAGER' || targetRole === 'PARTNER') && roleName === 'CUSTOMER' && !isPartnerAccount) {
     const error = new Error('Customer accounts cannot request password reset from the Partner portal.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (targetRole && targetRole !== 'PARTNER' && roleName !== 'ADMIN' && targetRole !== roleName) {
+    const roleLabels = {
+      CAFE_OWNER: 'Cafe Owner',
+      RESTAURANT_OWNER: 'Restaurant Owner',
+      WALKING_CAFE_OWNER: 'Walking Cafe Partner',
+      EVENT_MANAGER: 'Event Manager',
+      CUSTOMER: 'Customer',
+    };
+    const registeredLabel = roleLabels[roleName] || roleName;
+    const selectedLabel = roleLabels[targetRole] || targetRole;
+    const error = new Error(`This account is registered as a ${registeredLabel}, not ${selectedLabel}. Please request password reset for ${registeredLabel}.`);
     error.statusCode = 403;
     throw error;
   }

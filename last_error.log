@@ -1,11 +1,17 @@
-Error: cafeId is required
-    at Object.toggleFavorite (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\favoriteService.js:31:19)
-    at toggleFavorite (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\favoriteController.js:25:42)
-    at Layer.handleRequest (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\layer.js:152:17)
-    at next (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\route.js:157:13)
-    at Route.dispatch (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\lib\route.js:117:3)
-    at handle (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\router\index.js:435:11)
-    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\core\build\cjs\integrations\express\patch-layer.js:109:36
-    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\opentelemetry\build\cjs\asyncContextStrategy-DP1H8zYV.js:642:40
-    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\opentelemetry\build\cjs\asyncContextStrategy-DP1H8zYV.js:627:15
-    at Module.handleCallbackErrors (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@sentry\core\build\cjs\utils\handleCallbackErrors.js:11:26)
+PrismaClientKnownRequestError: 
+Invalid `prisma.notifications.findFirst()` invocation in
+D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\repositories\notificationRepository.js:32:37
+
+  29 };
+  30 
+  31 const getNotificationById = async (userId, id) => {
+→ 32   return await prisma.notifications.findFirst(
+Invalid input value: invalid input syntax for type uuid: "stats"
+    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:8286)
+    at zr.handleAndLogRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
+    at zr.request (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async a (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
+    at async Object.getNotificationById (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\repositories\notificationRepository.js:32:10)
+    at async Object.getNotificationById (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\notificationService.js:495:13)
+    at async getNotificationById (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\notificationController.js:17:20)

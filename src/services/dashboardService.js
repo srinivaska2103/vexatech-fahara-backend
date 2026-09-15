@@ -20,6 +20,25 @@ const getSummary = async (ownerId, role) => {
   bookings.forEach(b => {
     if (b.customer_id) customerSet.add(b.customer_id);
   });
+
+  // Also include logged-in users who viewed this owner's cafe(s)
+  if (prisma.cafe_analytics_events) {
+    const ownerCafes = await prisma.cafes.findMany({
+      where: isAdmin ? {} : { owner_id: ownerId },
+      select: { id: true }
+    });
+    const cafeIds = ownerCafes.map(c => c.id);
+    if (cafeIds.length > 0) {
+      const visitorEvents = await prisma.cafe_analytics_events.findMany({
+        where: { cafe_id: { in: cafeIds }, user_id: { not: null } },
+        select: { user_id: true }
+      });
+      visitorEvents.forEach(ve => {
+        if (ve.user_id) customerSet.add(ve.user_id);
+      });
+    }
+  }
+
   const totalCustomers = customerSet.size;
 
   let adminExtra = {};
@@ -125,9 +144,22 @@ const getSummary = async (ownerId, role) => {
     where: isAdmin ? {} : { cafes: { owner_id: ownerId } }
   });
   
-  const averageRating = reviews.length > 0 
-    ? (reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1)
-    : '0.0';
+  let avgRatingNum = 0;
+  if (reviews.length > 0) {
+    avgRatingNum = (reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length);
+  } else {
+    const ownerCafes = await prisma.cafes.findMany({
+      where: isAdmin ? {} : { owner_id: ownerId },
+      select: { average_rating: true, google_rating: true }
+    });
+    if (ownerCafes.length > 0) {
+      const ratings = ownerCafes.map(c => Number(c.average_rating || c.google_rating || 0)).filter(r => r > 0);
+      if (ratings.length > 0) {
+        avgRatingNum = ratings.reduce((sum, r) => sum + r, 0) / ratings.length;
+      }
+    }
+  }
+  const averageRating = avgRatingNum > 0 ? avgRatingNum.toFixed(1) : '0.0';
 
   // Real Revenue Chart (Last 7 days)
   const today = new Date();
@@ -351,20 +383,20 @@ const getRecentBookings = async (ownerId, role) => {
   const bookings = await prisma.bookings.findMany({
     where: isAdmin ? {} : { cafes: { owner_id: ownerId } },
     orderBy: { created_at: 'desc' },
-    take: 5,
+    take: 10,
     include: { users: true, cafes: true }
   });
 
   return bookings.map(b => ({
     id: b.id,
-    customerName: b.users?.name || 'Guest',
+    customerName: (b.users?.name && b.users.name.toLowerCase() !== 'guest') ? b.users.name : (b.users?.email ? b.users.email.split('@')[0] : 'Customer'),
     customerEmail: b.users?.email || '',
     cafeName: b.cafes?.name || 'Cafe',
     date: b.booking_date,
     time: b.start_time,
-    guests: b.total_persons,
+    guests: b.total_persons || 1,
     amount: Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0))),
-    status: b.booking_status
+    status: b.booking_status || 'CONFIRMED'
   }));
 };
 

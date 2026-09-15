@@ -110,6 +110,13 @@ model cafes {
   created_at                  DateTime?             @default(now()) @db.Timestamp(6)
   amenities                   Json?
   discounts                   Json?
+  is_walking_cafe         Boolean?              @default(false)
+  walk_in                 Boolean?              @default(true)
+  table_reservation       Boolean?              @default(true)
+  event_booking           Boolean?              @default(true)
+  event_packages          Boolean?              @default(true)
+  event_facilities        Boolean?              @default(true)
+  capabilities            Json?
   bookings                bookings[]
   cafe_business_hours     cafe_business_hours[]
   cafe_packages           cafe_packages[]
@@ -117,10 +124,28 @@ model cafes {
   favorites               favorites[]
   reviews                 reviews[]
   cafe_tables             cafe_tables[]
+  cafe_analytics_events   cafe_analytics_events[]
 
   @@index([city], map: "idx_cafes_city")
   @@index([owner_id], map: "idx_cafes_owner")
   @@index([status], map: "idx_cafes_status")
+}
+
+model cafe_analytics_events {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id    String    @db.Uuid
+  user_id    String?   @db.Uuid
+  session_id String?   @db.VarChar(100)
+  event_type String    @db.VarChar(50)
+  source     String?   @db.VarChar(50)
+  metadata   Json?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  cafes      cafes     @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([cafe_id], map: "idx_analytics_cafe")
+  @@index([event_type], map: "idx_analytics_event_type")
+  @@index([created_at], map: "idx_analytics_created_at")
 }
 
 model event_services {
@@ -343,6 +368,7 @@ model users {
   favorites                 favorites[]
   notifications             notifications[]
   reviews                   reviews[]
+  cafe_analytics_events     cafe_analytics_events[]
   user_devices              user_devices[]
   customer_notes_as_customer customer_notes[] @relation("customer_notes_customer")
   customer_notes_as_owner    customer_notes[] @relation("customer_notes_owner")

@@ -59,24 +59,24 @@ router.use('/:cafeId/tables', tableRoutes);
 
 // --- Cafe Packages Routes (defined before /:id to prevent route clashing) ---
 router.get('/packages/:packageId', cafeController.getPackageById);
-router.put('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), cafeController.updatePackage);
-router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), cafeController.deletePackage);
+router.put('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePackage);
+router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.deletePackage);
 
 // --- Cafe Routes ---
 router.get('/:id', cafeController.getCafeById);
 router.get('/:id/edit', cafeController.getCafeById);
-router.post('/', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), validateRequest(cafeSchema), cafeController.createCafe);
-router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
-router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
-router.put('/:id/business-hours', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), cafeController.updateBusinessHours);
-router.delete('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), cafeController.deleteCafe);
+router.post('/', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), validateRequest(cafeSchema), cafeController.createCafe);
+router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
+router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
+router.put('/:id/business-hours', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updateBusinessHours);
+router.delete('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.deleteCafe);
 
 // --- Cafe Packages Routes ---
-router.post('/:cafeId/packages', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), validateRequest(packageSchema), cafeController.addPackage);
+router.post('/:cafeId/packages', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), validateRequest(packageSchema), cafeController.addPackage);
 
 // --- Payment Account & Bank Verification Routes ---
-router.get('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), cafeController.getPaymentAccount);
-router.patch('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), cafeController.updatePaymentAccount);
-router.put('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER'), cafeController.updatePaymentAccount);
+router.get('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), cafeController.getPaymentAccount);
+router.patch('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePaymentAccount);
+router.put('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePaymentAccount);
 
 module.exports = router;

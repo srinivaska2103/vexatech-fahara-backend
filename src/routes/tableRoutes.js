@@ -47,26 +47,26 @@ const combinationSchema = Joi.object({
 router.get('/availability', tableController.getRealtimeTableAvailability);
 
 // GET next suggested table number
-router.get('/next-number', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), tableController.getNextTableNumber);
+router.get('/next-number', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), tableController.getNextTableNumber);
 
 // GET all tables for a cafe
 router.get(['/', ''], tableController.getTablesByCafe);
 
 // POST create table
-router.post(['/', ''], protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(createTableSchema), tableController.createTable);
+router.post(['/', ''], protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(createTableSchema), tableController.createTable);
 
 // PATCH / PUT update table
-router.patch('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(updateTableSchema), tableController.updateTable);
-router.put('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(updateTableSchema), tableController.updateTable);
+router.patch('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(updateTableSchema), tableController.updateTable);
+router.put('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(updateTableSchema), tableController.updateTable);
 
 // PATCH update status
-router.patch('/:tableId/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(statusSchema), tableController.updateTableStatus);
+router.patch('/:tableId/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(statusSchema), tableController.updateTableStatus);
 
 // DELETE table
-router.delete('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), tableController.deleteTable);
+router.delete('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), tableController.deleteTable);
 
 // POST / PUT table combinations
-router.post('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(combinationSchema), tableController.setTableCombinations);
-router.put('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'ADMIN'), validateRequest(combinationSchema), tableController.setTableCombinations);
+router.post('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(combinationSchema), tableController.setTableCombinations);
+router.put('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(combinationSchema), tableController.setTableCombinations);
 
 module.exports = router;

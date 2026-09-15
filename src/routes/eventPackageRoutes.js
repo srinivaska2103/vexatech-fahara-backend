@@ -13,14 +13,14 @@ router.get('/:id', eventPackageController.getPackageById);
 router.post(
   '/',
   protect,
-  authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'),
+  authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'),
   eventPackageController.createOrUpdatePackage
 );
 
 router.delete(
   '/:id',
   protect,
-  authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'),
+  authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'),
   eventPackageController.deletePackage
 );
 

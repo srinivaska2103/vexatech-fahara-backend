@@ -156,6 +156,41 @@ const getTableBookingsCount = async (tableId) => {
   });
 };
 
+const parseBookingDate = (dateVal) => {
+  if (!dateVal) return new Date();
+  if (dateVal instanceof Date) {
+    const yyyy = dateVal.getFullYear();
+    const mm = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateVal.getDate()).padStart(2, '0');
+    return new Date(`${yyyy}-${mm}-${dd}T00:00:00.000Z`);
+  }
+  const str = String(dateVal).split('T')[0];
+  return new Date(`${str}T00:00:00.000Z`);
+};
+
+const parseTimeToPrismaDate = (timeStr) => {
+  if (!timeStr) return new Date('1970-01-01T00:00:00.000Z');
+  if (timeStr instanceof Date) {
+    const h = String(timeStr.getUTCHours()).padStart(2, '0');
+    const m = String(timeStr.getUTCMinutes()).padStart(2, '0');
+    const s = String(timeStr.getUTCSeconds()).padStart(2, '0');
+    return new Date(`1970-01-01T${h}:${m}:${s}.000Z`);
+  }
+  const str = String(timeStr).trim();
+  if (str.includes('T')) {
+    const d = new Date(str);
+    const h = String(d.getUTCHours()).padStart(2, '0');
+    const m = String(d.getUTCMinutes()).padStart(2, '0');
+    const s = String(d.getUTCSeconds()).padStart(2, '0');
+    return new Date(`1970-01-01T${h}:${m}:${s}.000Z`);
+  }
+  const parts = str.split(':');
+  const h = String(parts[0] || '0').padStart(2, '0');
+  const m = String(parts[1] || '0').padStart(2, '0');
+  const s = String((parts[2] || '0').split('.')[0]).padStart(2, '0');
+  return new Date(`1970-01-01T${h}:${m}:${s}.000Z`);
+};
+
 const getUpcomingBookingsForTable = async (tableId) => {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -165,7 +200,7 @@ const getUpcomingBookingsForTable = async (tableId) => {
       table_id: tableId,
       bookings: {
         booking_date: { gte: now },
-        booking_status: { in: ['PENDING', 'CONFIRMED', 'ACCEPTED', 'IN_PROGRESS'] }
+        booking_status: { notIn: ['CANCELLED', 'REJECTED', 'REFUNDED', 'DELETED'] }
       }
     },
     include: {
@@ -177,15 +212,19 @@ const getUpcomingBookingsForTable = async (tableId) => {
 const checkTablesAvailability = async (cafeId, tableIds = [], bookingDate, startTime, endTime, excludeBookingId = null) => {
   if (!tableIds || tableIds.length === 0) return true;
 
+  const bDate = parseBookingDate(bookingDate);
+  const sTime = parseTimeToPrismaDate(startTime);
+  const eTime = parseTimeToPrismaDate(endTime);
+
   const whereClause = {
     table_id: { in: tableIds },
     bookings: {
       cafe_id: cafeId,
-      booking_date: bookingDate,
-      booking_status: { in: ['PENDING', 'CONFIRMED', 'ACCEPTED', 'IN_PROGRESS'] },
+      booking_date: bDate,
+      booking_status: { notIn: ['CANCELLED', 'REJECTED', 'REFUNDED', 'DELETED'] },
       AND: [
-        { start_time: { lt: endTime } },
-        { end_time: { gt: startTime } }
+        { start_time: { lt: eTime } },
+        { end_time: { gt: sTime } }
       ]
     }
   };

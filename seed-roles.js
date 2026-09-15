@@ -5,12 +5,16 @@ async function main() {
   const roles = await prisma.roles.findMany();
   console.log('Current roles:', roles);
   
-  if (!roles.find(r => r.name === 'ADMIN')) {
-    console.log('Creating ADMIN role...');
-    await prisma.roles.create({ data: { name: 'ADMIN' } });
-    console.log('ADMIN role created.');
-  } else {
-    console.log('ADMIN role already exists.');
+  const requiredRoles = ['ADMIN', 'CAFE_OWNER', 'WALKING_CAFE_OWNER', 'EVENT_MANAGER', 'CUSTOMER'];
+  
+  for (const roleName of requiredRoles) {
+    if (!roles.find(r => r.name === roleName)) {
+      console.log(`Creating ${roleName} role...`);
+      await prisma.roles.create({ data: { name: roleName } });
+      console.log(`${roleName} role created.`);
+    } else {
+      console.log(`${roleName} role already exists.`);
+    }
   }
 }
 

@@ -121,9 +121,38 @@ const findAllCafes = async (query = {}) => {
     where.name = { contains: query.query, mode: 'insensitive' };
   }
   
+  if (
+    query.is_walking_cafe === 'true' || 
+    query.is_walking_cafe === true || 
+    query.cafe_type === 'WALKING_CAFE' || 
+    (query.category && (
+      String(query.category).toLowerCase().includes('walk') ||
+      String(query.category).toLowerCase() === 'walking cafe' ||
+      String(query.category).toLowerCase() === 'walking cafes'
+    ))
+  ) {
+    where.OR = [
+      { is_walking_cafe: true },
+      { walk_in: true },
+      { table_reservation: false },
+      { category: { contains: 'Walking Cafe', mode: 'insensitive' } },
+      { users: { user_type: 'WALKING_CAFE_OWNER' } }
+    ];
+  }
+
+  if (
+    query.category && 
+    !String(query.category).toLowerCase().includes('walk') && 
+    !String(query.category).toLowerCase().includes('discount') &&
+    !String(query.category).toLowerCase().includes('offer') &&
+    query.category !== 'All' &&
+    query.category !== ''
+  ) {
+    where.category = { contains: query.category, mode: 'insensitive' };
+  }
+
   if (query.status && !query.owner_id) {
     // if a specific status is requested by a non-owner, it's ignored or overriden above.
-    // However, if we wanted to allow filtering by status, we can do it here. 
   } else if (query.status && query.owner_id) {
     where.status = query.status;
   }

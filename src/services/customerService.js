@@ -77,6 +77,59 @@ const getCustomersByOwner = async (ownerId, userRole = 'CAFE_OWNER') => {
     }
   }
 
+  // Also include users who interacted with or viewed this owner's cafes (analytics events / favorites)
+  let ownerCafes = [];
+  if (userRole === 'ADMIN') {
+    ownerCafes = await prisma.cafes.findMany({ select: { id: true, name: true } });
+  } else {
+    ownerCafes = await prisma.cafes.findMany({ where: { owner_id: ownerId }, select: { id: true, name: true } });
+  }
+  const cafeIds = ownerCafes.map(c => c.id);
+  const cafeNameMap = {};
+  ownerCafes.forEach(c => { cafeNameMap[c.id] = c.name; });
+
+  if (cafeIds.length > 0 && prisma.cafe_analytics_events) {
+    const analyticsUsers = await prisma.cafe_analytics_events.findMany({
+      where: {
+        cafe_id: { in: cafeIds },
+        user_id: { not: null }
+      },
+      include: {
+        users: true
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    for (const event of analyticsUsers) {
+      if (!event.users) continue;
+      const u = event.users;
+
+      if (!customerMap[u.id]) {
+        customerMap[u.id] = {
+          ...u,
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          phone: u.phone,
+          profile_image: u.profile_image,
+          created_at: u.created_at,
+          status: u.status,
+          is_vip: false,
+          total_bookings: 0,
+          total_spend: 0,
+          notes: [],
+          cafeVisits: {},
+          eventVisits: {}
+        };
+      }
+
+      const cafeName = cafeNameMap[event.cafe_id];
+      if (cafeName) {
+        customerMap[u.id].cafeVisits[cafeName] = (customerMap[u.id].cafeVisits[cafeName] || 0) + 1;
+      }
+    }
+  }
+
   // Get unique event service IDs to fetch their names
   const eventServiceIdsToFetch = new Set();
   for (const customer of Object.values(customerMap)) {
@@ -144,7 +197,25 @@ const getCustomersByOwner = async (ownerId, userRole = 'CAFE_OWNER') => {
 
 const getCustomerById = async (customerId, ownerId, userRole = 'CAFE_OWNER') => {
   const users = await getCustomersByOwner(ownerId, userRole);
-  return users.find(u => u.id === customerId) || null;
+  const customer = users.find(u => u.id === customerId);
+  if (!customer) return null;
+
+  // Calculate real average rating submitted by this customer
+  const reviews = await prisma.reviews.findMany({
+    where: { customer_id: customerId },
+    select: { rating: true }
+  });
+
+  let average_rating = 0;
+  if (reviews.length > 0) {
+    const sum = reviews.reduce((acc, r) => acc + Number(r.rating || 0), 0);
+    average_rating = (sum / reviews.length).toFixed(1);
+  }
+
+  return {
+    ...customer,
+    average_rating
+  };
 };
 
 const getCustomerBookings = async (customerId, ownerId, userRole = 'CAFE_OWNER') => {

@@ -5,12 +5,12 @@ const { authorizeRoles } = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
-router.get('/owner', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomersByOwner);
-router.get('/owner/analytics', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerAnalytics);
-router.get('/owner/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerById);
-router.get('/owner/:id/bookings', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerBookings);
-router.get('/owner/:id/payments', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerPayments);
-router.get('/owner/:id/reviews', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerReviews);
+router.get('/owner', protect, authorizeRoles('CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomersByOwner);
+router.get('/owner/analytics', protect, authorizeRoles('CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerAnalytics);
+router.get('/owner/:id', protect, authorizeRoles('CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerById);
+router.get('/owner/:id/bookings', protect, authorizeRoles('CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerBookings);
+router.get('/owner/:id/payments', protect, authorizeRoles('CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerPayments);
+router.get('/owner/:id/reviews', protect, authorizeRoles('CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), customerController.getCustomerReviews);
 
 // Mock actions
 router.post('/owner/:id/vip', protect, (req, res) => res.json({ success: true }));

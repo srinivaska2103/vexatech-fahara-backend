@@ -52,6 +52,18 @@ const toggleFavorite = async (userId, cafeId) => {
         cafe_id: cafeId,
       }
     });
+
+    // Non-blocking analytics record for wishlist add
+    try {
+      const analyticsService = require('./analyticsService');
+      analyticsService.recordEvent({
+        cafe_id: cafeId,
+        user_id: userId,
+        event_type: 'WISHLIST_ADD',
+        source: 'user_app'
+      });
+    } catch (e) {}
+
     return { isFavorite: true, message: 'Added to favorites' };
   }
 };
