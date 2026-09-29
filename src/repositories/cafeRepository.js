@@ -100,6 +100,14 @@ const stitchMediaToCafes = async (cafes) => {
       }
     }
 
+    if (cafe.users) {
+      if (cafe.state === undefined) cafe.state = cafe.users.state || '';
+      if (cafe.country === undefined) cafe.country = cafe.users.country || '';
+      if (cafe.pincode === undefined) cafe.pincode = cafe.users.pincode || '';
+      if (!cafe.email) cafe.email = cafe.users.email || '';
+      if (!cafe.phone) cafe.phone = cafe.users.phone || '';
+    }
+
     return sanitizeCafe(cafe);
   });
 
@@ -146,9 +154,33 @@ const findAllCafes = async (query = {}) => {
     !String(query.category).toLowerCase().includes('discount') &&
     !String(query.category).toLowerCase().includes('offer') &&
     query.category !== 'All' &&
+    query.category !== 'All Spaces' &&
     query.category !== ''
   ) {
-    where.category = { contains: query.category, mode: 'insensitive' };
+    const catSearch = String(query.category).trim();
+    where.OR = [
+      { category: { contains: catSearch, mode: 'insensitive' } },
+      { name: { contains: catSearch, mode: 'insensitive' } },
+      { description: { contains: catSearch, mode: 'insensitive' } },
+      {
+        cafe_packages: {
+          some: {
+            OR: [
+              { package_name: { contains: catSearch, mode: 'insensitive' } },
+              { description: { contains: catSearch, mode: 'insensitive' } }
+            ]
+          }
+        }
+      }
+    ];
+    // If searching for Coffee, also include Coffee Shop / Cafe
+    if (catSearch.toLowerCase().includes('coffee')) {
+      where.OR.push({ category: { contains: 'Cafe', mode: 'insensitive' } });
+    }
+    // If searching for Birthday, Birthday Party keyword
+    if (catSearch.toLowerCase().includes('birthday')) {
+      where.OR.push({ category: { contains: 'Party', mode: 'insensitive' } });
+    }
   }
 
   if (query.status && !query.owner_id) {
@@ -168,7 +200,7 @@ const findAllCafes = async (query = {}) => {
     orderBy: { created_at: 'desc' },
     include: {
       users: {
-        select: { name: true, email: true, phone: true },
+        select: { name: true, email: true, phone: true, address: true, city: true, state: true, country: true, pincode: true },
       },
       cafe_packages: true,
       cafe_business_hours: true,
@@ -179,11 +211,16 @@ const findAllCafes = async (query = {}) => {
 };
 
 const findCafeById = async (id) => {
+  if (!id || typeof id !== 'string') return null;
+  const cleanId = id.trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+  if (!isUuid) return null;
+
   let cafe = await prisma.cafes.findUnique({
-    where: { id },
+    where: { id: cleanId },
     include: {
       users: {
-        select: { name: true, email: true, phone: true },
+        select: { name: true, email: true, phone: true, address: true, city: true, state: true, country: true, pincode: true },
       },
       cafe_packages: true,
       cafe_business_hours: true,
@@ -191,12 +228,12 @@ const findCafeById = async (id) => {
     },
   });
 
-  if (!cafe && id) {
+  if (!cafe) {
     cafe = await prisma.cafes.findFirst({
-      where: { user_id: id },
+      where: { owner_id: cleanId },
       include: {
         users: {
-          select: { name: true, email: true, phone: true },
+          select: { name: true, email: true, phone: true, address: true, city: true, state: true, country: true, pincode: true },
         },
         cafe_packages: true,
         cafe_business_hours: true,

@@ -65,6 +65,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/cafes/:cafeId/tables', tableRoutes);
 app.use('/cafes/:cafeId/tables', tableRoutes);
+const cafeController = require('./controllers/cafeController');
+app.get('/api/v1/categories', cafeController.getCategories);
 app.use('/api/v1/cafes', cafeRoutes);
 app.use('/api/v1/owner/cafes', cafeRoutes);
 app.use('/owner/cafes', cafeRoutes);

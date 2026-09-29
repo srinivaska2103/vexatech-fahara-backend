@@ -13,7 +13,8 @@ const createCafe = async (userId, cafeData) => {
     throw error;
   }
 
-  const { business_hours, email, phone, state, country, pincode, working_hrs, workingHours, ...validCafeData } = cafeData;
+  const { business_hours, email, phone, state, country, pincode, postalPincode, working_hrs, workingHours, ...validCafeData } = cafeData;
+  const pin = pincode || postalPincode || '';
   
   // Check owner role to determine default walking cafe status
   const userRecord = await userRepository.findUserById(userId);
@@ -49,7 +50,7 @@ const createCafe = async (userId, cafeData) => {
     await cafeRepository.updateCafeBusinessHours(cafe.id, business_hours);
   }
 
-  // Sync cafe details to owner user profile (business_name, description, address, city) if not set or on creation
+  // Sync cafe details to owner user profile (business_name, description, address, city, state, country, pincode)
   try {
     const prisma = require('../config/prisma');
     const user = await prisma.users.findUnique({ where: { id: userId } });
@@ -57,8 +58,13 @@ const createCafe = async (userId, cafeData) => {
       const userUpdate = {};
       if (!user.business_name && validCafeData.name) userUpdate.business_name = validCafeData.name;
       if (!user.description && validCafeData.description) userUpdate.description = validCafeData.description;
-      if (!user.address && validCafeData.address) userUpdate.address = validCafeData.address;
-      if (!user.city && validCafeData.city) userUpdate.city = validCafeData.city;
+      if (validCafeData.address) userUpdate.address = validCafeData.address;
+      if (validCafeData.city) userUpdate.city = validCafeData.city;
+      if (state) userUpdate.state = state;
+      if (country) userUpdate.country = country;
+      if (pin) userUpdate.pincode = pin;
+      if (email) userUpdate.email = email;
+      if (phone) userUpdate.phone = phone;
       if (!user.profile_image && validCafeData.cover_image) userUpdate.profile_image = validCafeData.cover_image;
 
       if (Object.keys(userUpdate).length > 0) {
@@ -113,7 +119,8 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
   }
 
   // Filter out non-cafe fields like business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours
-  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours, ...validUpdateData } = updateData;
+  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, postalPincode, working_hrs, workingHours, ...validUpdateData } = updateData;
+  const pin = pincode || postalPincode;
 
   const isWalking = validUpdateData.is_walking_cafe === true || cafe.is_walking_cafe === true || userRole === 'WALKING_CAFE_OWNER' || validUpdateData.category === 'Walking Cafe';
 
@@ -138,19 +145,27 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
 
   let result = await cafeRepository.updateCafe(cafeId, validUpdateData);
   
-  // If email or phone provided, update owner user profile
-  if (email || phone) {
+  // Sync email, phone, address, city, state, country, pincode to owner user profile
+  if (email || phone || state !== undefined || country !== undefined || pin !== undefined || validUpdateData.address || validUpdateData.city) {
     try {
       const prisma = require('../config/prisma');
       const userUpdate = {};
       if (email) userUpdate.email = email;
       if (phone) userUpdate.phone = phone;
-      await prisma.users.update({
-        where: { id: cafe.owner_id },
-        data: userUpdate
-      });
+      if (validUpdateData.address) userUpdate.address = validUpdateData.address;
+      if (validUpdateData.city) userUpdate.city = validUpdateData.city;
+      if (state !== undefined) userUpdate.state = state;
+      if (country !== undefined) userUpdate.country = country;
+      if (pin !== undefined) userUpdate.pincode = pin;
+      
+      if (Object.keys(userUpdate).length > 0) {
+        await prisma.users.update({
+          where: { id: cafe.owner_id },
+          data: userUpdate
+        });
+      }
     } catch (err) {
-      console.error('Failed to sync user contact details on cafe update:', err.message);
+      console.error('Failed to sync user contact/location details on cafe update:', err.message);
     }
   }
 
@@ -161,6 +176,7 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
   
   return result;
 };
+
 
 const deleteCafe = async (userId, cafeId) => {
   const cafe = await getCafeById(cafeId);
@@ -571,6 +587,106 @@ const updateCafePaymentAccount = async (userId, cafeId, bankPayload) => {
   };
 };
 
+const getDiscoveryCategories = async () => {
+  const prisma = require('../config/prisma');
+  
+  // Fetch active/approved cafes with packages for real DB calculations
+  const cafes = await prisma.cafes.findMany({
+    where: {
+      status: { in: ['ACTIVE', 'APPROVED'] }
+    },
+    include: {
+      cafe_packages: true,
+      users: { include: { roles: true } }
+    }
+  });
+
+  let eventServices = [];
+  try {
+    eventServices = await prisma.event_services.findMany({
+      where: { status: 'ACTIVE' }
+    });
+  } catch (err) {}
+
+  const categoryTemplates = [
+    { id: 'Coffee Shop', title: 'Cafes', slug: 'coffee-shop', type: 'category' },
+    { id: 'Restaurant', title: 'Restaurants', slug: 'restaurant', type: 'category' },
+    { id: 'Bakery & Cafe', title: 'Bakery & Cafe', slug: 'bakery-cafe', type: 'category' },
+    { id: 'Party Hall', title: 'Party Halls', slug: 'party-hall', type: 'category' },
+    { id: 'Event Space', title: 'Event Spaces', slug: 'event-space', type: 'category' },
+    { id: 'Rooftop', title: 'Rooftop Cafes', slug: 'rooftop', type: 'category' },
+    { id: 'Outdoor', title: 'Outdoor Venues', slug: 'outdoor', type: 'category' },
+    { id: 'Private Dining', title: 'Private Dining', slug: 'private-dining', type: 'category' },
+    { id: 'Birthday Party', title: 'Birthday', slug: 'birthday-party', type: 'event', keywords: ['birthday', 'bday', 'party'] },
+    { id: 'Anniversary & Couples', title: 'Anniversary', slug: 'anniversary', type: 'event', keywords: ['anniversary', 'couple', 'couples', 'date', 'romantic'] },
+    { id: 'Corporate Meeting', title: 'Corporate', slug: 'corporate', type: 'event', keywords: ['corporate', 'meeting', 'conference', 'work', 'business'] },
+    { id: 'Wedding Reception', title: 'Wedding', slug: 'wedding', type: 'event', keywords: ['wedding', 'reception', 'marriage', 'engagement'] },
+    { id: 'Photoshoot', title: 'Photoshoot', slug: 'photoshoot', type: 'event', keywords: ['photoshoot', 'shoot', 'studio', 'camera'] },
+    { id: 'Baby Shower', title: 'Baby Shower', slug: 'baby-shower', type: 'event', keywords: ['baby', 'shower', 'maternity'] },
+    { id: 'Engagement', title: 'Engagement', slug: 'engagement', type: 'event', keywords: ['engagement', 'ring', 'ceremony'] },
+    { id: 'Walking Cafe', title: 'Walking Cafes', slug: 'walking-cafe', type: 'space' },
+    { id: 'All Spaces', title: 'All Spaces', slug: 'all-spaces', type: 'space' }
+  ];
+
+  const categories = categoryTemplates.map(tmpl => {
+    let count = 0;
+    const secId = tmpl.id.toLowerCase().trim();
+
+    if (tmpl.id === 'All Spaces') {
+      count = cafes.length;
+    } else if (tmpl.id === 'Walking Cafe') {
+      count = cafes.filter(c => 
+        c.is_walking_cafe || 
+        c.users?.roles?.name === 'WALKING_CAFE_OWNER' || 
+        (c.category && c.category.toLowerCase().includes('walk'))
+      ).length;
+    } else if (tmpl.type === 'category') {
+      count = cafes.filter(c => {
+        const cat = (c.category || '').toLowerCase();
+        const name = (c.name || '').toLowerCase();
+        const desc = (c.description || '').toLowerCase();
+        if (secId === 'coffee shop') return cat.includes('coffee') || cat.includes('cafe') || cat.includes('bakery') || cat.includes('bistro') || name.includes('coffee') || name.includes('cafe');
+        if (secId === 'restaurant') return cat.includes('restaurant') || cat.includes('resturant') || cat.includes('dining') || name.includes('restaurant') || name.includes('resturant');
+        if (secId === 'bakery & cafe') return cat.includes('bakery') || cat.includes('cafe');
+        if (secId === 'party hall') return cat.includes('party') || cat.includes('hall') || cat.includes('banquet') || cat.includes('reception') || name.includes('party') || name.includes('hall') || c.event_booking === true || c.event_packages === true;
+        if (secId === 'event space') return cat.includes('event') || cat.includes('space') || cat.includes('venue') || cat.includes('hall') || name.includes('event') || c.event_booking === true || c.event_packages === true || (Array.isArray(c.cafe_packages) && c.cafe_packages.length > 0);
+        if (secId === 'rooftop') return cat.includes('rooftop') || name.includes('rooftop') || desc.includes('rooftop');
+        if (secId === 'outdoor') return cat.includes('outdoor') || name.includes('outdoor') || desc.includes('outdoor');
+        if (secId === 'private dining') return cat.includes('private') || cat.includes('dining') || name.includes('private') || desc.includes('private') || c.table_reservation === true;
+        return cat.includes(secId) || name.includes(secId);
+      }).length;
+    } else if (tmpl.type === 'event') {
+      const matchingCafes = cafes.filter(c => {
+        const cat = (c.category || '').toLowerCase();
+        const name = (c.name || '').toLowerCase();
+        const desc = (c.description || '').toLowerCase();
+        const packagesStr = (c.cafe_packages || []).map(p => `${p.package_name || ''} ${p.description || ''}`).join(' ').toLowerCase();
+
+        return tmpl.keywords.some(k => cat.includes(k) || name.includes(k) || desc.includes(k) || packagesStr.includes(k));
+      }).length;
+
+      const matchingServices = eventServices.filter(s => {
+        const cat = (s.category || '').toLowerCase();
+        const name = (s.service_name || '').toLowerCase();
+        return tmpl.keywords.some(k => cat.includes(k) || name.includes(k));
+      }).length;
+
+      count = matchingCafes + matchingServices;
+    }
+
+    return {
+      id: tmpl.id,
+      title: tmpl.title,
+      slug: tmpl.slug,
+      type: tmpl.type,
+      venueCount: count,
+      count: count
+    };
+  });
+
+  return categories;
+};
+
 module.exports = {
   createCafe,
   getAllCafes,
@@ -584,5 +700,6 @@ module.exports = {
   updateCafeBusinessHours,
   getCafePaymentAccount,
   updateCafePaymentAccount,
+  getDiscoveryCategories,
 };
 

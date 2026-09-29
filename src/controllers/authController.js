@@ -86,6 +86,14 @@ const refreshToken = async (req, res, next) => {
   }
 };
 
+const logout = async (req, res, next) => {
+  try {
+    res.status(200).json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   verifyOtp,
@@ -95,4 +103,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   refreshToken,
+  logout,
 };
+

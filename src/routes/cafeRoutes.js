@@ -14,6 +14,12 @@ const cafeSchema = Joi.object({
   description: Joi.string().allow('', null),
   address: Joi.string().allow('', null),
   city: Joi.string().allow('', null),
+  state: Joi.string().allow('', null),
+  country: Joi.string().allow('', null),
+  pincode: Joi.string().allow('', null),
+  postalPincode: Joi.string().allow('', null),
+  email: Joi.string().allow('', null),
+  phone: Joi.string().allow('', null),
   latitude: Joi.number().allow(null),
   longitude: Joi.number().allow(null),
   price_per_hour: Joi.number().min(0).allow(null),
@@ -31,7 +37,7 @@ const cafeSchema = Joi.object({
   category: Joi.string().allow('', null),
   rejection_reason: Joi.string().allow('', null),
   is_featured: Joi.boolean().allow(null),
-});
+}).unknown(true);
 
 const packageSchema = Joi.object({
   event_type: Joi.string().allow('', null).default('Special Event'),
@@ -53,6 +59,7 @@ const packageSchema = Joi.object({
 
 // --- Base Cafe Routes ---
 router.get('/', cafeController.getCafes);
+router.get('/categories', cafeController.getCategories);
 
 // --- Cafe Tables Routes ---
 router.use('/:cafeId/tables', tableRoutes);

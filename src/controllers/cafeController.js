@@ -19,8 +19,24 @@ const getCafes = async (req, res, next) => {
   }
 };
 
+const getCategories = async (req, res, next) => {
+  try {
+    const categories = await cafeService.getDiscoveryCategories();
+    res.status(200).json({ 
+      success: true, 
+      totalCategories: categories.length, 
+      data: categories 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getCafeById = async (req, res, next) => {
   try {
+    if (req.params.id === 'categories') {
+      return getCategories(req, res, next);
+    }
     const result = await cafeService.getCafeById(req.params.id);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
@@ -138,6 +154,7 @@ const updatePaymentAccount = async (req, res, next) => {
   }
 };
 
+
 module.exports = {
   createCafe,
   getCafes,
@@ -151,5 +168,6 @@ module.exports = {
   updateBusinessHours,
   getPaymentAccount,
   updatePaymentAccount,
+  getCategories,
 };
 

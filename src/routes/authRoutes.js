@@ -203,4 +203,17 @@ router.post('/reset-password', authController.resetPassword);
  */
 router.post('/refresh-token', authController.refreshToken);
 
+/**
+ * @swagger
+ * /api/v1/auth/logout:
+ *   post:
+ *     summary: Logout User
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ */
+router.post('/logout', authController.logout);
+
 module.exports = router;
+
