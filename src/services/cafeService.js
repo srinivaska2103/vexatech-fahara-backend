@@ -590,101 +590,132 @@ const updateCafePaymentAccount = async (userId, cafeId, bankPayload) => {
 const getDiscoveryCategories = async () => {
   const prisma = require('../config/prisma');
   
-  // Fetch active/approved cafes with packages for real DB calculations
-  const cafes = await prisma.cafes.findMany({
-    where: {
-      status: { in: ['ACTIVE', 'APPROVED'] }
-    },
-    include: {
-      cafe_packages: true,
-      users: { include: { roles: true } }
-    }
-  });
-
-  let eventServices = [];
   try {
-    eventServices = await prisma.event_services.findMany({
-      where: { status: 'ACTIVE' }
-    });
-  } catch (err) {}
-
-  const categoryTemplates = [
-    { id: 'Coffee Shop', title: 'Cafes', slug: 'coffee-shop', type: 'category' },
-    { id: 'Restaurant', title: 'Restaurants', slug: 'restaurant', type: 'category' },
-    { id: 'Bakery & Cafe', title: 'Bakery & Cafe', slug: 'bakery-cafe', type: 'category' },
-    { id: 'Party Hall', title: 'Party Halls', slug: 'party-hall', type: 'category' },
-    { id: 'Event Space', title: 'Event Spaces', slug: 'event-space', type: 'category' },
-    { id: 'Rooftop', title: 'Rooftop Cafes', slug: 'rooftop', type: 'category' },
-    { id: 'Outdoor', title: 'Outdoor Venues', slug: 'outdoor', type: 'category' },
-    { id: 'Private Dining', title: 'Private Dining', slug: 'private-dining', type: 'category' },
-    { id: 'Birthday Party', title: 'Birthday', slug: 'birthday-party', type: 'event', keywords: ['birthday', 'bday', 'party'] },
-    { id: 'Anniversary & Couples', title: 'Anniversary', slug: 'anniversary', type: 'event', keywords: ['anniversary', 'couple', 'couples', 'date', 'romantic'] },
-    { id: 'Corporate Meeting', title: 'Corporate', slug: 'corporate', type: 'event', keywords: ['corporate', 'meeting', 'conference', 'work', 'business'] },
-    { id: 'Wedding Reception', title: 'Wedding', slug: 'wedding', type: 'event', keywords: ['wedding', 'reception', 'marriage', 'engagement'] },
-    { id: 'Photoshoot', title: 'Photoshoot', slug: 'photoshoot', type: 'event', keywords: ['photoshoot', 'shoot', 'studio', 'camera'] },
-    { id: 'Baby Shower', title: 'Baby Shower', slug: 'baby-shower', type: 'event', keywords: ['baby', 'shower', 'maternity'] },
-    { id: 'Engagement', title: 'Engagement', slug: 'engagement', type: 'event', keywords: ['engagement', 'ring', 'ceremony'] },
-    { id: 'Walking Cafe', title: 'Walking Cafes', slug: 'walking-cafe', type: 'space' },
-    { id: 'All Spaces', title: 'All Spaces', slug: 'all-spaces', type: 'space' }
-  ];
-
-  const categories = categoryTemplates.map(tmpl => {
-    let count = 0;
-    const secId = tmpl.id.toLowerCase().trim();
-
-    if (tmpl.id === 'All Spaces') {
-      count = cafes.length;
-    } else if (tmpl.id === 'Walking Cafe') {
-      count = cafes.filter(c => 
-        c.is_walking_cafe || 
-        c.users?.roles?.name === 'WALKING_CAFE_OWNER' || 
-        (c.category && c.category.toLowerCase().includes('walk'))
-      ).length;
-    } else if (tmpl.type === 'category') {
-      count = cafes.filter(c => {
-        const cat = (c.category || '').toLowerCase();
-        const name = (c.name || '').toLowerCase();
-        const desc = (c.description || '').toLowerCase();
-        if (secId === 'coffee shop') return cat.includes('coffee') || cat.includes('cafe') || cat.includes('bakery') || cat.includes('bistro') || name.includes('coffee') || name.includes('cafe');
-        if (secId === 'restaurant') return cat.includes('restaurant') || cat.includes('resturant') || cat.includes('dining') || name.includes('restaurant') || name.includes('resturant');
-        if (secId === 'bakery & cafe') return cat.includes('bakery') || cat.includes('cafe');
-        if (secId === 'party hall') return cat.includes('party') || cat.includes('hall') || cat.includes('banquet') || cat.includes('reception') || name.includes('party') || name.includes('hall') || c.event_booking === true || c.event_packages === true;
-        if (secId === 'event space') return cat.includes('event') || cat.includes('space') || cat.includes('venue') || cat.includes('hall') || name.includes('event') || c.event_booking === true || c.event_packages === true || (Array.isArray(c.cafe_packages) && c.cafe_packages.length > 0);
-        if (secId === 'rooftop') return cat.includes('rooftop') || name.includes('rooftop') || desc.includes('rooftop');
-        if (secId === 'outdoor') return cat.includes('outdoor') || name.includes('outdoor') || desc.includes('outdoor');
-        if (secId === 'private dining') return cat.includes('private') || cat.includes('dining') || name.includes('private') || desc.includes('private') || c.table_reservation === true;
-        return cat.includes(secId) || name.includes(secId);
-      }).length;
-    } else if (tmpl.type === 'event') {
-      const matchingCafes = cafes.filter(c => {
-        const cat = (c.category || '').toLowerCase();
-        const name = (c.name || '').toLowerCase();
-        const desc = (c.description || '').toLowerCase();
-        const packagesStr = (c.cafe_packages || []).map(p => `${p.package_name || ''} ${p.description || ''}`).join(' ').toLowerCase();
-
-        return tmpl.keywords.some(k => cat.includes(k) || name.includes(k) || desc.includes(k) || packagesStr.includes(k));
-      }).length;
-
-      const matchingServices = eventServices.filter(s => {
-        const cat = (s.category || '').toLowerCase();
-        const name = (s.service_name || '').toLowerCase();
-        return tmpl.keywords.some(k => cat.includes(k) || name.includes(k));
-      }).length;
-
-      count = matchingCafes + matchingServices;
-    }
-
-    return {
-      id: tmpl.id,
-      title: tmpl.title,
-      slug: tmpl.slug,
-      type: tmpl.type,
-      venueCount: count,
-      count: count
+    // Canonical customer visibility filter: only ACTIVE / APPROVED cafes
+    const activeCafesWhere = {
+      status: { in: ['ACTIVE', 'APPROVED'] }
     };
-  });
 
-  return categories;
+    // Fetch only active, customer-visible cafes with their package relations
+    const cafes = await prisma.cafes.findMany({
+      where: activeCafesWhere,
+      select: {
+        id: true,
+        category: true,
+        name: true,
+        description: true,
+        cover_image: true,
+        gallery: true,
+        is_walking_cafe: true,
+        table_reservation: true,
+        event_booking: true,
+        event_packages: true,
+        event_facilities: true,
+        capabilities: true,
+        amenities: true,
+        users: {
+          select: {
+            roles: { select: { name: true } }
+          }
+        },
+        cafe_packages: {
+          where: { is_active: true },
+          select: {
+            package_name: true,
+            description: true,
+            inclusions: true
+          }
+        }
+      }
+    });
+
+    const categoryTemplates = [
+      { id: 'Coffee Shop', title: 'Cafes', slug: 'coffee-shop', type: 'VENUE_CATEGORY', fallbackImage: '/cat_cafes.jpg' },
+      { id: 'Restaurant', title: 'Restaurants', slug: 'restaurant', type: 'VENUE_CATEGORY', fallbackImage: '/cat_restaurants.jpg' },
+      { id: 'Bakery & Cafe', title: 'Bakery & Cafe', slug: 'bakery-cafe', type: 'VENUE_CATEGORY', fallbackImage: '/cat_bakery.jpg' },
+      { id: 'Bistro', title: 'Bistro', slug: 'bistro', type: 'VENUE_CATEGORY', fallbackImage: '/cat_restaurants_1790863823701.jpg' },
+      { id: 'Party Hall', title: 'Party Halls', slug: 'party-hall', type: 'VENUE_CATEGORY', fallbackImage: '/cat_events.jpg' },
+      { id: 'Event Space', title: 'Event Spaces', slug: 'event-space', type: 'VENUE_CATEGORY', fallbackImage: '/cat_events_1790863856506.jpg' },
+      { id: 'Rooftop', title: 'Rooftop Cafes', slug: 'rooftop', type: 'VENUE_CATEGORY', fallbackImage: '/cat_cafes_1790863810787.jpg' },
+      { id: 'Outdoor', title: 'Outdoor Venues', slug: 'outdoor', type: 'VENUE_CATEGORY', fallbackImage: '/cat_all_spaces.jpg' },
+      { id: 'Private Dining', title: 'Private Dining', slug: 'private-dining', type: 'VENUE_CATEGORY', fallbackImage: '/cat_restaurants.jpg' },
+      { id: 'Birthday Party', title: 'Birthday', slug: 'birthday-party', type: 'OCCASION', keywords: ['birthday', 'bday', 'party'], fallbackImage: '/cat_birthday.jpg' },
+      { id: 'Anniversary & Couples', title: 'Anniversary', slug: 'anniversary', type: 'OCCASION', keywords: ['anniversary', 'couple', 'couples', 'date', 'romantic'], fallbackImage: '/cat_birthday_1790863870479.jpg' },
+      { id: 'Corporate Meeting', title: 'Corporate', slug: 'corporate', type: 'OCCASION', keywords: ['corporate', 'meeting', 'conference', 'work', 'business'], fallbackImage: '/cat_events.jpg' },
+      { id: 'Wedding Reception', title: 'Wedding', slug: 'wedding', type: 'OCCASION', keywords: ['wedding', 'reception', 'marriage', 'engagement'], fallbackImage: '/cat_events_1790863856506.jpg' },
+      { id: 'Photoshoot', title: 'Photoshoot', slug: 'photoshoot', type: 'OCCASION', keywords: ['photoshoot', 'shoot', 'studio', 'camera'], fallbackImage: '/cat_events.jpg' },
+      { id: 'Baby Shower', title: 'Baby Shower', slug: 'baby-shower', type: 'OCCASION', keywords: ['baby', 'shower', 'maternity'], fallbackImage: '/cat_birthday.jpg' },
+      { id: 'Engagement', title: 'Engagement', slug: 'engagement', type: 'OCCASION', keywords: ['engagement', 'ring', 'ceremony'], fallbackImage: '/cat_events_1790863856506.jpg' },
+      { id: 'Walking Cafe', title: 'Walking Cafes', slug: 'walking-cafe', type: 'VENUE_CATEGORY', fallbackImage: '/cat_cafes.jpg' },
+      { id: 'All Spaces', title: 'All Spaces', slug: 'all-spaces', type: 'ALL', fallbackImage: '/cat_all_spaces_1790863886207.jpg' }
+    ];
+
+    const categories = categoryTemplates.map(tmpl => {
+      const secId = tmpl.id.toLowerCase().trim();
+      let matchingVenues = [];
+
+      if (tmpl.id === 'All Spaces' || tmpl.type === 'ALL') {
+        matchingVenues = (cafes || []).filter(c => c && c.id);
+      } else if (tmpl.id === 'Walking Cafe') {
+        matchingVenues = (cafes || []).filter(c => 
+          c && (
+            c.is_walking_cafe || 
+            c.users?.roles?.name === 'WALKING_CAFE_OWNER' || 
+            (c.category && String(c.category).toLowerCase().includes('walk'))
+          )
+        );
+      } else if (tmpl.type === 'VENUE_CATEGORY') {
+        matchingVenues = (cafes || []).filter(c => {
+          if (!c) return false;
+          const cat = (c.category || '').toLowerCase();
+          const name = (c.name || '').toLowerCase();
+          const desc = (c.description || '').toLowerCase();
+          if (secId === 'coffee shop') return cat.includes('coffee') || cat.includes('cafe') || cat.includes('bakery') || cat.includes('bistro') || name.includes('coffee') || name.includes('cafe');
+          if (secId === 'restaurant') return cat.includes('restaurant') || cat.includes('resturant') || cat.includes('dining') || name.includes('restaurant') || name.includes('resturant');
+          if (secId === 'bakery & cafe') return cat.includes('bakery') || cat.includes('pastry');
+          if (secId === 'party hall') return cat.includes('party hall') || cat.includes('banquet') || cat.includes('reception') || (cat.includes('party') && cat.includes('hall'));
+          if (secId === 'event space') return c.event_booking === true || c.event_packages === true || cat.includes('event') || cat.includes('space') || (Array.isArray(c.cafe_packages) && c.cafe_packages.length > 0);
+          if (secId === 'rooftop') return cat.includes('rooftop') || name.includes('rooftop') || desc.includes('rooftop');
+          if (secId === 'outdoor') return cat.includes('outdoor') || name.includes('outdoor') || desc.includes('outdoor');
+          if (secId === 'private dining') return (c.capabilities && c.capabilities.private_dining === true) || cat.includes('private dining') || desc.includes('private dining') || desc.includes('private room');
+          return cat.includes(secId) || name.includes(secId);
+        });
+      } else if (tmpl.type === 'OCCASION') {
+        matchingVenues = (cafes || []).filter(c => {
+          if (!c) return false;
+          const cat = (c.category || '').toLowerCase();
+          const name = (c.name || '').toLowerCase();
+          const desc = (c.description || '').toLowerCase();
+          const packagesStr = (c.cafe_packages || []).map(p => `${p?.package_name || ''} ${p?.description || ''}`).join(' ').toLowerCase();
+          const fullText = `${cat} ${name} ${desc} ${packagesStr}`.toLowerCase();
+
+          return tmpl.keywords.some(k => fullText.includes(k));
+        });
+      }
+
+      // Count UNIQUE active venue IDs
+      const uniqueVenueIds = new Set(matchingVenues.map(v => v.id));
+      const uniqueCount = uniqueVenueIds.size;
+
+      // Use dedicated category image for each category thumbnail
+      const representativeImage = tmpl.fallbackImage;
+
+      return {
+        id: tmpl.id,
+        title: tmpl.title,
+        slug: tmpl.slug,
+        type: tmpl.type,
+        image: representativeImage,
+        venueCount: uniqueCount,
+        count: uniqueCount
+      };
+    });
+
+    return categories;
+  } catch (error) {
+    console.error('Error in getDiscoveryCategories:', error);
+    throw error;
+  }
 };
 
 module.exports = {

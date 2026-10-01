@@ -1,4 +1,11 @@
-Error: Invalid email or password
-    at Object.login (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\authService.js:155:19)
+Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
+    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\pg-pool\index.js:45:11
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async login (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\authController.js:28:20)
+    at async PrismaPgAdapter.performIO (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
+    at async PrismaPgAdapter.queryRaw (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
+    at async xr (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:26510)
+    at async e.interpretNode (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:44621)
+    at async e.interpretNode (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:43744)
+    at async e.interpretNode (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:46285)
+    at async e.run (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:43335)
+    at async e.execute (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:57:815)

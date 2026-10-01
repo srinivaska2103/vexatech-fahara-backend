@@ -41,8 +41,11 @@ const toggleFavorite = async (userId, cafeId) => {
   });
 
   if (existing) {
-    await prisma.favorites.delete({
-      where: { id: existing.id }
+    await prisma.favorites.deleteMany({
+      where: {
+        user_id: userId,
+        cafe_id: cafeId,
+      }
     });
     return { isFavorite: false, message: 'Removed from favorites' };
   } else {

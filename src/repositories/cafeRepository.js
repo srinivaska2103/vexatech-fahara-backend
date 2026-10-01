@@ -108,6 +108,15 @@ const stitchMediaToCafes = async (cafes) => {
       if (!cafe.phone) cafe.phone = cafe.users.phone || '';
     }
 
+    if (cafe.latitude !== undefined && cafe.latitude !== null) {
+      const parsedLat = parseFloat(cafe.latitude);
+      cafe.latitude = Number.isFinite(parsedLat) && parsedLat >= -90 && parsedLat <= 90 ? parsedLat : null;
+    }
+    if (cafe.longitude !== undefined && cafe.longitude !== null) {
+      const parsedLng = parseFloat(cafe.longitude);
+      cafe.longitude = Number.isFinite(parsedLng) && parsedLng >= -180 && parsedLng <= 180 ? parsedLng : null;
+    }
+
     return sanitizeCafe(cafe);
   });
 
@@ -158,28 +167,110 @@ const findAllCafes = async (query = {}) => {
     query.category !== ''
   ) {
     const catSearch = String(query.category).trim();
-    where.OR = [
-      { category: { contains: catSearch, mode: 'insensitive' } },
-      { name: { contains: catSearch, mode: 'insensitive' } },
-      { description: { contains: catSearch, mode: 'insensitive' } },
-      {
-        cafe_packages: {
-          some: {
-            OR: [
-              { package_name: { contains: catSearch, mode: 'insensitive' } },
-              { description: { contains: catSearch, mode: 'insensitive' } }
-            ]
+    const catLower = catSearch.toLowerCase();
+
+    // Canonical category handling for exact match parity with GET /api/v1/categories
+    if (catLower === 'event space' || catLower === 'event-space' || catLower === 'events') {
+      where.OR = [
+        { event_booking: true },
+        { event_packages: true },
+        { category: { contains: 'event', mode: 'insensitive' } },
+        { category: { contains: 'space', mode: 'insensitive' } },
+        { name: { contains: 'event', mode: 'insensitive' } },
+        { description: { contains: 'event', mode: 'insensitive' } },
+        { cafe_packages: { some: { is_active: true } } }
+      ];
+    } else if (catLower === 'private dining' || catLower === 'private-dining') {
+      where.OR = [
+        { category: { contains: 'private', mode: 'insensitive' } },
+        { category: { contains: 'dining', mode: 'insensitive' } },
+        { name: { contains: 'private', mode: 'insensitive' } },
+        { description: { contains: 'private', mode: 'insensitive' } },
+        { description: { contains: 'room', mode: 'insensitive' } }
+      ];
+    } else if (catLower === 'party hall' || catLower === 'party-hall' || catLower === 'party halls') {
+      where.OR = [
+        { category: { contains: 'party', mode: 'insensitive' } },
+        { category: { contains: 'hall', mode: 'insensitive' } },
+        { category: { contains: 'banquet', mode: 'insensitive' } },
+        { name: { contains: 'party', mode: 'insensitive' } },
+        { name: { contains: 'hall', mode: 'insensitive' } }
+      ];
+    } else if (catLower === 'coffee shop' || catLower === 'coffee-shop' || catLower === 'cafes' || catLower === 'cafe') {
+      where.OR = [
+        { category: { contains: 'Coffee', mode: 'insensitive' } },
+        { category: { contains: 'Cafe', mode: 'insensitive' } },
+        { category: { contains: 'Bakery', mode: 'insensitive' } },
+        { category: { contains: 'Bistro', mode: 'insensitive' } },
+        { name: { contains: 'Coffee', mode: 'insensitive' } },
+        { name: { contains: 'Cafe', mode: 'insensitive' } }
+      ];
+    } else if (catLower === 'restaurant' || catLower === 'restaurants') {
+      where.OR = [
+        { category: { contains: 'Restaurant', mode: 'insensitive' } },
+        { category: { contains: 'Resturant', mode: 'insensitive' } },
+        { category: { contains: 'Dining', mode: 'insensitive' } },
+        { name: { contains: 'Restaurant', mode: 'insensitive' } },
+        { name: { contains: 'Resturant', mode: 'insensitive' } }
+      ];
+    } else if (catLower === 'bakery & cafe' || catLower === 'bakery-cafe' || catLower === 'bakery') {
+      where.OR = [
+        { category: { contains: 'Bakery', mode: 'insensitive' } },
+        { category: { contains: 'Pastry', mode: 'insensitive' } },
+        { name: { contains: 'Bakery', mode: 'insensitive' } }
+      ];
+    } else if (catLower === 'birthday' || catLower === 'birthday party' || catLower === 'birthday-party') {
+      where.OR = [
+        { category: { contains: 'Birthday', mode: 'insensitive' } },
+        { category: { contains: 'Party', mode: 'insensitive' } },
+        { name: { contains: 'Birthday', mode: 'insensitive' } },
+        { description: { contains: 'Birthday', mode: 'insensitive' } },
+        { description: { contains: 'Party', mode: 'insensitive' } },
+        {
+          cafe_packages: {
+            some: {
+              OR: [
+                { package_name: { contains: 'Birthday', mode: 'insensitive' } },
+                { description: { contains: 'Birthday', mode: 'insensitive' } },
+                { package_name: { contains: 'Party', mode: 'insensitive' } }
+              ]
+            }
           }
         }
-      }
-    ];
-    // If searching for Coffee, also include Coffee Shop / Cafe
-    if (catSearch.toLowerCase().includes('coffee')) {
-      where.OR.push({ category: { contains: 'Cafe', mode: 'insensitive' } });
-    }
-    // If searching for Birthday, Birthday Party keyword
-    if (catSearch.toLowerCase().includes('birthday')) {
-      where.OR.push({ category: { contains: 'Party', mode: 'insensitive' } });
+      ];
+    } else if (catLower === 'engagement') {
+      where.OR = [
+        { category: { contains: 'Engagement', mode: 'insensitive' } },
+        { name: { contains: 'Engagement', mode: 'insensitive' } },
+        { description: { contains: 'Engagement', mode: 'insensitive' } },
+        { description: { contains: 'Ring', mode: 'insensitive' } },
+        {
+          cafe_packages: {
+            some: {
+              OR: [
+                { package_name: { contains: 'Engagement', mode: 'insensitive' } },
+                { description: { contains: 'Engagement', mode: 'insensitive' } }
+              ]
+            }
+          }
+        }
+      ];
+    } else {
+      where.OR = [
+        { category: { contains: catSearch, mode: 'insensitive' } },
+        { name: { contains: catSearch, mode: 'insensitive' } },
+        { description: { contains: catSearch, mode: 'insensitive' } },
+        {
+          cafe_packages: {
+            some: {
+              OR: [
+                { package_name: { contains: catSearch, mode: 'insensitive' } },
+                { description: { contains: catSearch, mode: 'insensitive' } }
+              ]
+            }
+          }
+        }
+      ];
     }
   }
 
