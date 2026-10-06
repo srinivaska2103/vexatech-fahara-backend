@@ -129,13 +129,34 @@ const findAllCafes = async (query = {}) => {
   
   if (query.owner_id) {
     where.owner_id = query.owner_id;
-  } else {
+  } else if (query.status && query.status !== 'ALL' && query.status !== 'all') {
+    where.status = query.status.toUpperCase();
+  } else if (!query.admin && !query.include_all) {
     // For public customer UI searches, show active cafes
     where.status = { in: ['ACTIVE', 'APPROVED'] };
   }
 
   if (query.query) {
     where.name = { contains: query.query, mode: 'insensitive' };
+  }
+
+  // Restaurant filtering vs Cafe filtering
+  if (
+    query.type === 'RESTAURANT' || 
+    query.venue_type === 'RESTAURANT' || 
+    query.business_type === 'RESTAURANT' || 
+    query.role === 'RESTAURANT_OWNER' ||
+    query.is_restaurant === 'true' ||
+    query.is_restaurant === true
+  ) {
+    where.OR = [
+      { users: { roles: { name: 'RESTAURANT_OWNER' } } },
+      { category: { contains: 'Restaurant', mode: 'insensitive' } },
+      { category: { contains: 'Bistro', mode: 'insensitive' } },
+      { category: { contains: 'Dining', mode: 'insensitive' } }
+    ];
+  } else if (query.type === 'CAFE' || query.venue_type === 'CAFE' || query.role === 'CAFE_OWNER') {
+    where.users = { roles: { name: { in: ['CAFE_OWNER', 'WALKING_CAFE_OWNER'] } } };
   }
   
   if (

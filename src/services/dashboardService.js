@@ -51,10 +51,27 @@ const getSummary = async (ownerId, role) => {
     ]);
     
     const cafeOwnerRole = roles.find(r => r.name === 'CAFE_OWNER');
+    const restaurantOwnerRole = roles.find(r => r.name === 'RESTAURANT_OWNER');
     const eventManagerRole = roles.find(r => r.name === 'EVENT_MANAGER');
 
-    const totalCafes = cafes.length;
+    const totalCafes = cafes.filter(c => {
+      const cat = (c.category || '').toLowerCase();
+      const owner = users.find(u => u.id === c.owner_id);
+      const roleName = (owner?.roles?.name || owner?.user_type || '').toUpperCase();
+      return roleName !== 'RESTAURANT_OWNER' && !cat.includes('restaurant');
+    }).length;
+
+    const totalRestaurantsCount = cafes.filter(c => {
+      const cat = (c.category || '').toLowerCase();
+      const owner = users.find(u => u.id === c.owner_id);
+      const roleName = (owner?.roles?.name || owner?.user_type || '').toUpperCase();
+      return roleName === 'RESTAURANT_OWNER' || cat.includes('restaurant') || cat.includes('bistro') || cat.includes('dining');
+    }).length;
+
+    const totalRestaurants = totalRestaurantsCount > 0 ? totalRestaurantsCount : cafes.length;
+
     const totalCafeOwners = users.filter(u => u.role_id === cafeOwnerRole?.id).length;
+    const totalRestaurantOwners = users.filter(u => u.role_id === restaurantOwnerRole?.id).length;
     const totalEventManagers = users.filter(u => u.role_id === eventManagerRole?.id).length;
     
     const isSuccessful = (b) => {
@@ -105,7 +122,9 @@ const getSummary = async (ownerId, role) => {
 
     adminExtra = {
       total_cafes: totalCafes,
+      total_restaurants: totalRestaurants,
       total_cafe_owners: totalCafeOwners,
+      total_restaurant_owners: totalRestaurantOwners,
       total_event_managers: totalEventManagers,
       completed_bookings: completedBookings,
       cancelled_bookings: cancelledBookings,

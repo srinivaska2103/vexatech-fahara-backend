@@ -5,7 +5,7 @@ async function main() {
   const roles = await prisma.roles.findMany();
   console.log('Current roles:', roles);
   
-  const requiredRoles = ['ADMIN', 'CAFE_OWNER', 'WALKING_CAFE_OWNER', 'EVENT_MANAGER', 'CUSTOMER'];
+  const requiredRoles = ['ADMIN', 'CAFE_OWNER', 'WALKING_CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'CUSTOMER'];
   
   for (const roleName of requiredRoles) {
     if (!roles.find(r => r.name === roleName)) {

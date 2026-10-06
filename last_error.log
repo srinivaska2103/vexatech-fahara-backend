@@ -1,11 +1,16 @@
-Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
-    at D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\pg-pool\index.js:45:11
+PrismaClientKnownRequestError: 
+Invalid `prisma.payments.findUnique()` invocation in
+D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\paymentService.js:1077:41
+
+  1074   throw err;
+  1075 }
+  1076 
+→ 1077 const payment = await prisma.payments.findUnique(
+Invalid input value: invalid input syntax for type uuid: "synth_0358681a-08bd-4bce-b30f-baf448da64a4"
+    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:8286)
+    at zr.handleAndLogRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
+    at zr.request (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async PrismaPgAdapter.performIO (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\adapter-pg\dist\index.js:654:22)
-    at async PrismaPgAdapter.queryRaw (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\adapter-pg\dist\index.js:604:30)
-    at async xr (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:26510)
-    at async e.interpretNode (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:44621)
-    at async e.interpretNode (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:43744)
-    at async e.interpretNode (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:46285)
-    at async e.run (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:11:43335)
-    at async e.execute (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:57:815)
+    at async a (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
+    at async Object.syncCashfreePayoutStatus (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\paymentService.js:1077:19)
+    at async syncCashfreePayoutStatus (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\paymentController.js:316:18)
