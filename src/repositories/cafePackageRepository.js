@@ -16,12 +16,17 @@ const flattenInclusions = (pkg) => {
     Object.assign(pkg, pkg.inclusions);
   }
 
+  if (Array.isArray(pkg.cafe_package_inclusions) && pkg.cafe_package_inclusions.length > 0) {
+    pkg.child_inclusions = pkg.cafe_package_inclusions;
+  }
+
   return pkg;
 };
 
 const createPackage = async (packageData) => {
   const pkg = await prisma.cafe_packages.create({
     data: packageData,
+    include: { cafe_package_inclusions: true }
   });
   return flattenInclusions(pkg);
 };
@@ -29,7 +34,10 @@ const createPackage = async (packageData) => {
 const findPackageById = async (id) => {
   const pkg = await prisma.cafe_packages.findUnique({
     where: { id },
-    include: { cafes: true }
+    include: { 
+      cafes: true,
+      cafe_package_inclusions: true
+    }
   });
   
   if (pkg && pkg.cafes) {
@@ -44,6 +52,7 @@ const updatePackage = async (id, updateData) => {
   const pkg = await prisma.cafe_packages.update({
     where: { id },
     data: updateData,
+    include: { cafe_package_inclusions: true }
   });
   return flattenInclusions(pkg);
 };

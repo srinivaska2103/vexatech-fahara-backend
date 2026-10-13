@@ -202,6 +202,7 @@ router.post('/reset-password', authController.resetPassword);
  *         description: Invalid token
  */
 router.post('/refresh-token', authController.refreshToken);
+router.post('/refresh', authController.refreshToken);
 
 /**
  * @swagger

@@ -473,12 +473,19 @@ const resetPassword = async (emailInput, otpInput, newPassword) => {
 };
 
 const refreshToken = async (token) => {
+  if (!token) {
+    const error = new Error('Refresh token is required');
+    error.statusCode = 401;
+    throw error;
+  }
+
   const decoded = jwtUtils.verifyToken(token);
   if (!decoded) {
     const error = new Error('Invalid refresh token');
     error.statusCode = 401;
     throw error;
   }
+
 
   const user = await userRepository.findUserById(decoded.id);
   if (!user) {

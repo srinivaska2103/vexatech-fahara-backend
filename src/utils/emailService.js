@@ -166,6 +166,211 @@ const sendBirthdayPromotionalEmail = async (email, name) => {
   await sendEmail(email, subject, text, html);
 };
 
+const sendNewSubscriptionNotificationToAdmin = async (subscriptionData) => {
+  const adminEmail = getAdminEmail();
+  const subject = `New Partner Subscription Activated: ${subscriptionData.partnerName || subscriptionData.ownerName || 'Partner'} (${subscriptionData.partnerType || 'CAFE'})`;
+  const text = `A new subscription has been activated.\n\nPartner: ${subscriptionData.partnerName}\nType: ${subscriptionData.partnerType}\nPlan: ${subscriptionData.planName}\nFee: Rs. ${subscriptionData.price}/month\nRazorpay Sub ID: ${subscriptionData.razorpaySubscriptionId}`;
+  const html = templates.getNewSubscriptionAdminTemplate(subscriptionData);
+
+  await sendEmail(adminEmail, subject, text, html);
+};
+
+const sendSubscriptionCancelledAdminEmail = async (data) => {
+  const adminEmail = getAdminEmail();
+  const typeTitle = data.partnerType === 'EVENT_MANAGER' ? 'Event Manager' : (data.partnerType === 'RESTAURANT' ? 'Restaurant' : 'Cafe');
+  const subject = `New Fahara ${typeTitle} Subscription Cancellation – ${data.partnerName || 'Partner'}`;
+  const text = `A partner has cancelled their Fahara subscription.\n\nPartner: ${data.partnerName}\nType: ${typeTitle}\nPlan: ${data.planName}\nEnd Date: ${data.periodEnd ? new Date(data.periodEnd).toLocaleDateString() : 'End of period'}`;
+  const html = templates.getSubscriptionCancelledAdminTemplate(data);
+
+  await sendEmail(adminEmail, subject, text, html);
+};
+
+const sendSubscriptionExpiredPartnerEmail = async (data) => {
+  if (!data.email) return;
+  const roleTitle = data.partnerType === 'EVENT_MANAGER' ? 'Event Partner' : 'Partner';
+  const subject = `Your Fahara ${roleTitle} Subscription Has Expired – Renew Now`;
+  const text = `Hello ${data.ownerName},\n\nYour Fahara subscription for ${data.partnerName} has expired. Portal management features are currently locked. Renew your subscription at ${data.renewalUrl}`;
+  const html = templates.getSubscriptionExpiredPartnerTemplate(data);
+
+  await sendEmail(data.email, subject, text, html, true);
+};
+
+const sendPartnerSubscriptionPaymentSuccessEmail = async (data) => {
+  if (!data?.email) {
+    console.warn('[SubscriptionEmail] Missing recipient email for payment success notification');
+    return { success: false, reason: 'MISSING_EMAIL' };
+  }
+
+  const subject = 'Payment Successful — Your Fahara Partner Subscription Is Active';
+  const { html, text } = templates.getPartnerSubscriptionPaymentSuccessTemplate(data);
+
+  return await sendEmailWithTracking({
+    userId: data.userId,
+    subscriptionId: data.subscriptionId,
+    paymentReference: data.paymentReference,
+    subscriptionReference: data.subscriptionReference,
+    emailType: 'SUBSCRIPTION_PAYMENT_SUCCESS',
+    recipient: data.email,
+    subject,
+    text,
+    html,
+    eventKey: data.eventKey || `SUB_SUCCESS_${data.subscriptionId}_${data.paymentReference || Date.now()}`
+  });
+};
+
+const sendPartnerSubscriptionCancellationEmail = async (data) => {
+  if (!data?.email) {
+    console.warn('[SubscriptionEmail] Missing recipient email for cancellation notification');
+    return { success: false, reason: 'MISSING_EMAIL' };
+  }
+
+  const subject = 'Your Fahara Partner Subscription Cancellation Update';
+  const { html, text } = templates.getPartnerSubscriptionCancellationTemplate(data);
+
+  return await sendEmailWithTracking({
+    userId: data.userId,
+    subscriptionId: data.subscriptionId,
+    paymentReference: null,
+    subscriptionReference: data.subscriptionReference,
+    emailType: 'SUBSCRIPTION_CANCELLATION',
+    recipient: data.email,
+    subject,
+    text,
+    html,
+    eventKey: data.eventKey || `SUB_CANCEL_${data.subscriptionId}_${data.cancellationDate || Date.now()}`
+  });
+};
+
+const sendPartnerSubscriptionExpiredEmail = async (data) => {
+  if (!data?.email) {
+    console.warn('[SubscriptionEmail] Missing recipient email for expiry notification');
+    return { success: false, reason: 'MISSING_EMAIL' };
+  }
+
+  const subject = 'Your Fahara Partner Subscription Has Expired — Renew Today';
+  const { html, text } = templates.getPartnerSubscriptionExpiredTemplate(data);
+
+  return await sendEmailWithTracking({
+    userId: data.userId,
+    subscriptionId: data.subscriptionId,
+    paymentReference: null,
+    subscriptionReference: data.subscriptionReference,
+    emailType: 'SUBSCRIPTION_EXPIRED',
+    recipient: data.email,
+    subject,
+    text,
+    html,
+    eventKey: data.eventKey || `SUB_EXPIRED_${data.subscriptionId}_${data.expiryDate || Date.now()}`
+  });
+};
+
+/**
+ * Robust email delivery with retry, dedup eventKey, and audit tracking.
+ * Safe: Email errors NEVER throw to roll back payments or subscription state.
+ */
+const sendEmailWithTracking = async ({
+  userId,
+  subscriptionId,
+  paymentReference,
+  subscriptionReference,
+  emailType,
+  recipient,
+  subject,
+  text,
+  html,
+  eventKey,
+  maxRetries = 2
+}) => {
+  const prisma = require('../config/prisma');
+
+  // 1. Check deduplication by eventKey in notifications table
+  if (eventKey) {
+    try {
+      const existing = await prisma.notifications.findFirst({
+        where: {
+          user_id: userId,
+          notification_type: eventKey
+        }
+      });
+      if (existing) {
+        console.log(`[SubscriptionEmail] Duplicate skipped for eventKey: ${eventKey}`);
+        return { success: true, duplicate: true, notificationId: existing.id };
+      }
+    } catch (checkErr) {
+      console.warn('[SubscriptionEmail Audit Check Warning]:', checkErr.message);
+    }
+  }
+
+  // 2. Prepare tracking record in notifications table
+  let notifRecord = null;
+  if (userId) {
+    try {
+      notifRecord = await prisma.notifications.create({
+        data: {
+          user_id: userId,
+          title: subject,
+          message: text.substring(0, 1000),
+          notification_type: eventKey || emailType,
+          channel: 'EMAIL',
+          status: 'PENDING'
+        }
+      });
+    } catch (saveErr) {
+      console.warn('[SubscriptionEmail Audit Init Warning]:', saveErr.message);
+    }
+  }
+
+  // 3. Attempt delivery with retries
+  let attempts = 0;
+  let lastError = null;
+  let delivered = false;
+
+  const mailOptions = {
+    from: process.env.FROM_EMAIL,
+    to: recipient,
+    subject,
+    text,
+    html
+  };
+
+  while (attempts <= maxRetries && !delivered) {
+    attempts++;
+    try {
+      await transporter.sendMail(mailOptions);
+      delivered = true;
+      console.log(`[SubscriptionEmail SUCCESS] Type: ${emailType} -> To: ${recipient} (Attempt ${attempts})`);
+    } catch (err) {
+      lastError = err?.message || String(err);
+      console.error(`[SubscriptionEmail ERROR] Attempt ${attempts} failed for ${recipient}: ${lastError}`);
+      if (attempts <= maxRetries) {
+        // Backoff delay before retry (500ms * attempt)
+        await new Promise(res => setTimeout(res, 500 * attempts));
+      }
+    }
+  }
+
+  // 4. Update audit log status safely
+  if (notifRecord?.id) {
+    try {
+      await prisma.notifications.update({
+        where: { id: notifRecord.id },
+        data: {
+          status: delivered ? 'SENT' : 'FAILED',
+          sent_at: delivered ? new Date() : null
+        }
+      });
+    } catch (updateErr) {
+      console.warn('[SubscriptionEmail Audit Update Warning]:', updateErr.message);
+    }
+  }
+
+  return {
+    success: delivered,
+    attempts,
+    lastError: delivered ? null : lastError,
+    notificationId: notifRecord?.id || null
+  };
+};
 
 module.exports = {
   getAdminEmail,
@@ -183,6 +388,13 @@ module.exports = {
   sendSupportTicketEmailToAdmin,
   sendSettlementCompletedEmail,
   sendBirthdayPromotionalEmail,
+  sendNewSubscriptionNotificationToAdmin,
+  sendSubscriptionCancelledAdminEmail,
+  sendSubscriptionExpiredPartnerEmail,
+  sendPartnerSubscriptionPaymentSuccessEmail,
+  sendPartnerSubscriptionCancellationEmail,
+  sendPartnerSubscriptionExpiredEmail,
+  sendEmailWithTracking,
   templates
 };
 

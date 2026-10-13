@@ -51,26 +51,46 @@ model bookings {
 }
 
 model cafe_packages {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cafe_id         String    @db.Uuid
-  package_name    String    @db.VarChar(255)
-  description     String?
-  price           Decimal?  @db.Decimal(10, 2)
-  minimum_persons Int?
-  maximum_persons Int?
-  duration_hours  Int?
-  cover_image     String?
-  gallery         Json?
-  is_active       Boolean?  @default(true)
-  created_at      DateTime? @default(now()) @db.Timestamp(6)
-  updated_at      DateTime? @default(now()) @db.Timestamp(6)
-  inclusions      Json?
-  cafes           cafes     @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id                 String                    @db.Uuid
+  event_type              String?                   @db.VarChar(100)
+  package_name            String                    @db.VarChar(255)
+  description             String?
+  price                   Decimal?                  @db.Decimal(10, 2)
+  minimum_persons         Int?
+  maximum_persons         Int?
+  duration_hours          Int?
+  duration_unit           String?                   @default("Hours") @db.VarChar(30)
+  cover_image             String?
+  gallery                 Json?
+  is_active               Boolean?                  @default(true)
+  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  inclusions              Json?
+  cafes                   cafes                     @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cafe_package_inclusions cafe_package_inclusions[]
 
   @@index([is_active], map: "idx_cafe_packages_active")
   @@index([cafe_id], map: "idx_cafe_packages_cafe")
+  @@index([event_type], map: "idx_cafe_packages_event_type")
   @@index([package_name], map: "idx_cafe_packages_name")
   @@index([inclusions], map: "idx_cafe_packages_inclusions", type: Gin)
+}
+
+model cafe_package_inclusions {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  package_id     String        @db.Uuid
+  name           String        @db.VarChar(255)
+  description    String?
+  quantity       Int           @default(1)
+  unit           String?       @default("Item") @db.VarChar(50)
+  unit_price     Decimal?      @default(0.00) @db.Decimal(10, 2)
+  is_active      Boolean?      @default(true)
+  created_at     DateTime?     @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?     @default(now()) @db.Timestamp(6)
+  cafe_packages  cafe_packages @relation(fields: [package_id], references: [id], onDelete: Cascade)
+
+  @@index([package_id], map: "idx_cafe_package_inclusions_package")
 }
 
 model cafes {
@@ -117,6 +137,7 @@ model cafes {
   event_packages          Boolean?              @default(true)
   event_facilities        Boolean?              @default(true)
   capabilities            Json?
+  qr_code_id              String?               @unique @db.VarChar(100)
   bookings                bookings[]
   cafe_business_hours     cafe_business_hours[]
   cafe_packages           cafe_packages[]
@@ -129,6 +150,7 @@ model cafes {
   @@index([city], map: "idx_cafes_city")
   @@index([owner_id], map: "idx_cafes_owner")
   @@index([status], map: "idx_cafes_status")
+  @@index([qr_code_id], map: "idx_cafes_qr_code_id")
 }
 
 model cafe_analytics_events {
@@ -149,26 +171,45 @@ model cafe_analytics_events {
 }
 
 model event_services {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id        String    @db.Uuid
-  category       String?   @db.VarChar(100)
-  service_name   String    @db.VarChar(200)
-  description    String?
-  price          Decimal?  @db.Decimal(10, 2)
-  gallery        Json?
-  inclusions     Json?
-  average_rating Decimal?  @default(0) @db.Decimal(2, 1)
-  total_reviews  Int?      @default(0)
-  status         String?   @default("ACTIVE") @db.VarChar(20)
-  created_at     DateTime? @default(now()) @db.Timestamp(6)
-  updated_at     DateTime? @default(now()) @db.Timestamp(6)
-  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  reviews        reviews[]
-  bookings       bookings[]
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                  String                     @db.Uuid
+  category                 String?                    @db.VarChar(100)
+  service_name             String                     @db.VarChar(200)
+  description              String?
+  price                    Decimal?                   @db.Decimal(10, 2)
+  duration_hours           Int?
+  duration_unit            String?                    @default("Hours") @db.VarChar(30)
+  gallery                  Json?
+  inclusions               Json?
+  average_rating           Decimal?                   @default(0) @db.Decimal(2, 1)
+  total_reviews            Int?                       @default(0)
+  status                   String?                    @default("ACTIVE") @db.VarChar(20)
+  created_at               DateTime?                  @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?                  @default(now()) @db.Timestamp(6)
+  users                    users                      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reviews                  reviews[]
+  bookings                 bookings[]
+  event_service_inclusions event_service_inclusions[]
 
   @@index([category], map: "idx_event_services_category")
   @@index([status], map: "idx_event_services_status")
   @@index([user_id], map: "idx_event_services_user")
+}
+
+model event_service_inclusions {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  service_id     String         @db.Uuid
+  name           String         @db.VarChar(255)
+  description    String?
+  quantity       Int            @default(1)
+  unit           String?        @default("Item") @db.VarChar(50)
+  unit_price     Decimal?       @default(0.00) @db.Decimal(10, 2)
+  is_active      Boolean?       @default(true)
+  created_at     DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?      @default(now()) @db.Timestamp(6)
+  event_services event_services @relation(fields: [service_id], references: [id], onDelete: Cascade)
+
+  @@index([service_id], map: "idx_event_service_inclusions_service")
 }
 
 model favorites {
@@ -375,6 +416,7 @@ model users {
   user_loyalty_accounts     user_loyalty_accounts?
   loyalty_credit_transactions loyalty_credit_transactions[]
   loyalty_redemptions        loyalty_redemptions[]
+  partner_subscriptions      partner_subscriptions[]
   roles                     roles                      @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
@@ -668,7 +710,7 @@ model event_packages {
   provider_type        String                    @db.VarChar(20)
   event_type           String                    @db.VarChar(100)
   package_name         String                    @db.VarChar(255)
-  package_level        String                    @db.VarChar(20)
+  package_level        String?                   @default("CUSTOM") @db.VarChar(50)
   description          String?
   base_price           Decimal                   @default(0.00) @db.Decimal(10, 2)
   package_pricing_mode String                    @default("BASE_ONLY") @db.VarChar(30)
@@ -678,11 +720,9 @@ model event_packages {
   updated_at           DateTime?                 @default(now()) @db.Timestamp(6)
   inclusions           event_package_inclusions[]
 
-  @@unique([provider_id, event_type, package_level], map: "uq_provider_event_package_level")
   @@index([provider_id], map: "idx_event_packages_provider")
   @@index([provider_type], map: "idx_event_packages_provider_type")
   @@index([event_type], map: "idx_event_packages_event_type")
-  @@index([package_level], map: "idx_event_packages_level")
   @@index([is_active], map: "idx_event_packages_active")
 }
 
@@ -724,6 +764,47 @@ model event_package_inclusion_tiers {
   @@unique([inclusion_id, tier_name], map: "uq_inclusion_tier_name")
   @@index([inclusion_id], map: "idx_inclusion_tiers_inclusion")
   @@index([tier_name], map: "idx_inclusion_tiers_name")
+}
+
+model subscription_plans {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String                  @db.VarChar(100)
+  price                 Decimal                 @db.Decimal(10, 2)
+  currency              String                  @default("INR") @db.VarChar(10)
+  billing_cycle         String                  @default("MONTHLY") @db.VarChar(20)
+  description           String?
+  features              Json?
+  is_active             Boolean                 @default(true)
+  created_at            DateTime?               @default(now()) @db.Timestamp(6)
+  updated_at            DateTime?               @default(now()) @db.Timestamp(6)
+  partner_subscriptions partner_subscriptions[]
+}
+
+model partner_subscriptions {
+  id                       String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                  String             @db.Uuid
+  business_id              String?            @db.Uuid
+  business_type            String             @db.VarChar(30)
+  plan_id                  String             @db.Uuid
+  status                   String             @default("INACTIVE") @db.VarChar(30)
+  razorpay_customer_id     String?            @db.VarChar(100)
+  razorpay_subscription_id  String?            @unique @db.VarChar(100)
+  razorpay_plan_id         String?            @db.VarChar(100)
+  current_period_start     DateTime?          @db.Timestamp(6)
+  current_period_end       DateTime?          @db.Timestamp(6)
+  cancel_at_period_end     Boolean            @default(false)
+  cancellation_email_sent  Boolean?           @default(false)
+  cancellation_email_sent_at DateTime?        @db.Timestamp(6)
+  expiration_email_sent    Boolean?           @default(false)
+  expiration_email_sent_at DateTime?          @db.Timestamp(6)
+  created_at               DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?          @default(now()) @db.Timestamp(6)
+  users                    users              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  subscription_plans       subscription_plans @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_partner_sub_user")
+  @@index([status], map: "idx_partner_sub_status")
+  @@index([business_type], map: "idx_partner_sub_business_type")
 }
 
 

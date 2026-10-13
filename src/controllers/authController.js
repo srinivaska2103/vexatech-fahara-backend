@@ -78,7 +78,10 @@ const resetPassword = async (req, res, next) => {
 
 const refreshToken = async (req, res, next) => {
   try {
-    const { token } = req.body;
+    const token = req.body?.token || req.body?.refreshToken;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Refresh token is required' });
+    }
     const result = await authService.refreshToken(token);
     res.status(200).json({ success: true, ...result });
   } catch (error) {

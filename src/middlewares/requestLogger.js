@@ -44,9 +44,20 @@ const requestLogger = (req, res, next) => {
         const copy = { ...parsed };
         if (copy.accessToken) copy.accessToken = copy.accessToken.slice(0, 15) + '...';
         if (copy.refreshToken) copy.refreshToken = copy.refreshToken.slice(0, 15) + '...';
-        console.log(`   Payload:`, JSON.stringify(copy, null, 2));
+        // If data is an array or has items, don't dump giant base64 payloads to console
+        const str = JSON.stringify(copy);
+        if (str.length > 1000) {
+          console.log(`   Payload: [JSON payload ${str.length} bytes, truncated]`, str.slice(0, 300) + '...');
+        } else {
+          console.log(`   Payload:`, JSON.stringify(copy, null, 2));
+        }
       } else if (typeof data === 'object') {
-        console.log(`   Payload:`, JSON.stringify(data, null, 2));
+        const str = JSON.stringify(data);
+        if (str && str.length > 1000) {
+          console.log(`   Payload: [Object payload ${str.length} bytes, truncated]`, str.slice(0, 300) + '...');
+        } else {
+          console.log(`   Payload:`, JSON.stringify(data, null, 2));
+        }
       }
     } catch (e) {
       console.log(`   Payload: [Raw Text / Buffer ${data ? String(data).length : 0} bytes]`);

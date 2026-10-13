@@ -38,9 +38,7 @@ const findUserById = async (id) => {
         include: { 
           roles: true,
           event_management_profiles: true,
-          cafes: true,
-          event_services: true,
-          event_business_hours: true
+          cafes: true
         },
       });
     } catch (err) {

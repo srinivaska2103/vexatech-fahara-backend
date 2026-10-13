@@ -12,7 +12,11 @@ const createCafe = async (req, res, next) => {
 
 const getCafes = async (req, res, next) => {
   try {
-    const result = await cafeService.getAllCafes(req.query);
+    const query = { ...req.query };
+    if (req.user?.roles?.name === 'ADMIN' || req.user?.role === 'ADMIN') {
+      query.admin = true;
+    }
+    const result = await cafeService.getAllCafes(query);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -37,7 +41,7 @@ const getCafeById = async (req, res, next) => {
     if (req.params.id === 'categories') {
       return getCategories(req, res, next);
     }
-    const result = await cafeService.getCafeById(req.params.id);
+    const result = await cafeService.getCafeById(req.params.id, req.user);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

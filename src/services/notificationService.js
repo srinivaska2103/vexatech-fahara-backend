@@ -112,54 +112,17 @@ const formatTableMeta = (booking) => {
   return 'Standard Open Seating';
 };
 
-const formatInclusionMeta = (booking) => {
-  // Check booking_items or booking.inclusions first
-  if (Array.isArray(booking.inclusions) && booking.inclusions.length > 0) {
-    const names = booking.inclusions
-      .map(i => typeof i === 'string' ? i : (i.item_name || i.title || i.name || (i.tier_name ? `${i.tier_name}` : null)))
-      .filter(Boolean);
-    if (names.length > 0) return names.join(', ');
+const formatPackageMeta = (booking) => {
+  if (booking.packages) {
+    const pkgName = booking.packages.package_name || booking.packages.name || booking.packages.title;
+    if (pkgName) return pkgName;
   }
-
-  // Check event_services inclusions
   if (booking.event_services) {
     const es = booking.event_services;
-    let inc = es.inclusions;
-    if (typeof inc === 'string') {
-      try { inc = JSON.parse(inc); } catch (e) { inc = []; }
-    }
-    if (Array.isArray(inc) && inc.length > 0) {
-      const names = inc.map(i => i.name || i.category || 'Feature').filter(Boolean);
-      if (names.length > 0) return `${es.service_name || 'Event Package'}: ${names.join(', ')}`;
-    }
+    const esName = es.service_name || es.title || es.name;
+    if (esName) return esName;
   }
-
-  if (!booking.packages) return '';
-  const pkgName = booking.packages.package_name || 'Cafe Package';
-  let inc = booking.packages.inclusions;
-  if (typeof inc === 'string') {
-    try { inc = JSON.parse(inc); } catch (e) { inc = {}; }
-  }
-  if (Array.isArray(inc) && inc.length > 0) {
-    const names = inc.map(i => i.name || i.category || 'Inclusion').filter(Boolean);
-    return `${pkgName}: ${names.join(', ')}`;
-  }
-
-  const sourceObj = (inc && typeof inc === 'object') ? { ...booking.packages, ...inc } : booking.packages;
-  const items = [];
-  ['food_items', 'cake_items', 'decoration_items', 'music_items', 'other_items'].forEach(key => {
-    if (Array.isArray(sourceObj[key])) {
-      sourceObj[key].forEach(i => {
-        const name = typeof i === 'string' ? i : (i?.name || '');
-        if (name) items.push(name.charAt(0).toUpperCase() + name.slice(1));
-      });
-    }
-  });
-
-  if (items.length > 0) {
-    return `${pkgName}: ${items.slice(0, 4).join(', ')}${items.length > 4 ? '...' : ''}`;
-  }
-  return pkgName;
+  return null;
 };
 
 const notifyBookingCreated = async (booking) => {
@@ -180,12 +143,11 @@ const notifyBookingCreated = async (booking) => {
   const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount;
 
   const tableInfo = formatTableMeta(booking);
-  const inclusionInfo = formatInclusionMeta(booking);
-
-  const pkgName = booking.packages?.package_name || 'Add-On';
+  const selectedPackage = formatPackageMeta(booking);
 
   const categoryStr = `${booking.cafes?.category || ''} ${booking.cafes?.service_type || ''} ${booking.cafes?.name || ''}`.toLowerCase();
   const isRestaurant = categoryStr.includes('restaur') || categoryStr.includes('restur');
+  const ownerGreetingRole = isRestaurant ? 'Restaurant Owner' : 'Cafe Owner';
 
   // ── Customer summary: full breakdown ──
   const customerSummaryItems = [
@@ -195,7 +157,7 @@ const notifyBookingCreated = async (booking) => {
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
     { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
-    ...(inclusionInfo ? [{ label: 'Package Inclusions', value: inclusionInfo, icon: '✨' }] : []),
+    ...(selectedPackage ? [{ label: 'Selected Package', value: selectedPackage, icon: '✨' }] : []),
     { label: 'Venue Cafe Charges', value: `₹${cafeOwnerAmount.toFixed(2)}` },
   ];
 
@@ -219,6 +181,7 @@ const notifyBookingCreated = async (booking) => {
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
     { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
+    ...(selectedPackage ? [{ label: 'Selected Package', value: selectedPackage, icon: '✨' }] : []),
     { label: 'Venue Cafe Charges', value: `₹${cafeOwnerAmount.toFixed(2)}`, isHighlight: true },
   ];
 
@@ -234,7 +197,7 @@ const notifyBookingCreated = async (booking) => {
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
     { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
-    ...(inclusionInfo ? [{ label: 'Selected Event Inclusions', value: inclusionInfo, icon: '✨' }] : []),
+    ...(selectedPackage ? [{ label: 'Selected Package', value: selectedPackage, icon: '✨' }] : []),
     { label: 'Event Service Package', value: booking.event_services?.service_name || booking.event_services?.title || 'Event Package', icon: '✨' },
     { label: 'Amount Payable to You', value: `₹${eventServiceAmount.toFixed(2)}`, isHighlight: true },
     { label: 'Cafe Venue Charges (Paid Separately)', value: `₹${cafeOwnerAmount.toFixed(2)}` },
@@ -249,7 +212,7 @@ const notifyBookingCreated = async (booking) => {
     booking.customer_id,
     isFreeReservation ? 'Table Reservation Requested' : 'Booking Requested',
     isFreeReservation
-      ? `Your table reservation request (${booking.booking_number}) at ${booking.cafes?.name || 'the venue'} has been submitted and is awaiting confirmation from the restaurant owner.`
+      ? `Your table reservation request (${booking.booking_number}) at ${booking.cafes?.name || 'the venue'} has been submitted and is awaiting confirmation from the ${isRestaurant ? 'restaurant' : 'cafe'} owner.`
       : `Your booking ${booking.booking_number} has been created and is pending payment. Total: ₹${total.toFixed(2)}`,
     'BOOKING_CREATED',
     booking.id,
@@ -265,7 +228,7 @@ const notifyBookingCreated = async (booking) => {
       : `You have a new booking request (${booking.booking_number}) for your cafe ${booking.cafes?.name}. Your portion: ₹${cafeOwnerAmount.toFixed(2)}`,
     'BOOKING_CREATED',
     booking.id,
-    templates.getBookingRequestOwnerTemplate('Restaurant Owner', booking.booking_number, customerName, cafeSummaryItems, bookingDbId)
+    templates.getBookingRequestOwnerTemplate(ownerGreetingRole, booking.booking_number, customerName, cafeSummaryItems, bookingDbId)
   );
 
   console.log(`[notifyBookingCreated] Checking event service for booking ${booking.booking_number}... event_services=${!!booking.event_services}, user_id=${booking.event_services?.user_id}`);
@@ -299,10 +262,11 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
   const cafeOwnerAmount = cafeAmount + foodAmount + decorationAmount + extraPersonAmount - discount;
 
   const tableInfo = formatTableMeta(booking);
-  const inclusionInfo = formatInclusionMeta(booking);
+  const selectedPackage = formatPackageMeta(booking);
 
   const categoryStr = `${booking.cafes?.category || ''} ${booking.cafes?.service_type || ''} ${booking.cafes?.name || ''}`.toLowerCase();
   const isRestaurant = categoryStr.includes('restaur') || categoryStr.includes('restur') || total === 0;
+  const ownerGreetingRole = isRestaurant ? 'Restaurant Owner' : 'Cafe Owner';
 
   const baseSummaryItems = [
     { label: 'Booking No', value: booking.booking_number, icon: '🎫' },
@@ -311,7 +275,7 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
     { label: 'Time', value: `${formatTimeUTC(booking.start_time)} – ${formatTimeUTC(booking.end_time)}`, icon: '⏰' },
     { label: 'Guests', value: `${booking.total_persons || 1} Guests`, icon: '👥' },
     { label: 'Table Reserved', value: tableInfo, icon: '🪑' },
-    ...(!isRestaurant && inclusionInfo ? [{ label: 'Package Inclusions', value: inclusionInfo, icon: '✨' }] : [])
+    ...(selectedPackage ? [{ label: 'Selected Package', value: selectedPackage, icon: '✨' }] : [])
   ];
 
   // ── Customer: full breakdown ──
@@ -368,8 +332,10 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
       break;
     case 'CONFIRMED':
       title = 'Booking Confirmed';
-      message = `Great news! Your booking ${booking.booking_number} at ${booking.cafes?.name || 'the cafe'} has been officially confirmed by the host.`;
-      customHtml = templates.getBookingConfirmedCustomerTemplate(userName, booking.booking_number, summaryItemsCustomer, bookingDbId);
+      message = cancelledByRole === 'Event Manager'
+        ? `Great news! Your booking ${booking.booking_number} for ${booking.cafes?.name || 'the venue'} has been accepted and confirmed by the Event Manager.`
+        : `Great news! Your booking ${booking.booking_number} at ${booking.cafes?.name || 'the cafe'} has been officially confirmed by the host.`;
+      customHtml = templates.getBookingConfirmedCustomerTemplate(userName, booking.booking_number, summaryItemsCustomer, bookingDbId, cancelledByRole);
       break;
     case 'CANCELLED':
       title = 'Booking Cancelled';
@@ -379,7 +345,7 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
     case 'COMPLETED':
       title = 'Booking Completed';
       message = `Hope you had a great time! Your booking ${booking.booking_number} is now marked as completed. We hope to see you again soon!`;
-      customHtml = templates.getBookingConfirmedCustomerTemplate(userName, booking.booking_number, summaryItemsCustomer, bookingDbId);
+      customHtml = templates.getBookingConfirmedCustomerTemplate(userName, booking.booking_number, summaryItemsCustomer, bookingDbId, cancelledByRole);
       break;
     default:
       title = 'Booking Updated';
@@ -408,7 +374,7 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
       paidMsg,
       'PAYMENT_RECEIVED',
       booking.id,
-      templates.getPaymentSuccessfulOwnerTemplate('Cafe Owner', booking.booking_number, `₹${cafeOwnerAmount.toFixed(2)}`, summaryItemsCafe, bookingDbId)
+      templates.getPaymentSuccessfulOwnerTemplate(ownerGreetingRole, booking.booking_number, `₹${cafeOwnerAmount.toFixed(2)}`, summaryItemsCafe, bookingDbId)
     );
     if (hasEventService) {
       await notifyUser(
@@ -427,7 +393,7 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
       `Booking ${booking.booking_number} has been cancelled by ${cancelledByRole}.`,
       'BOOKING_CANCELLED',
       booking.id,
-      templates.getBookingCancelledOwnerTemplate('Cafe Owner', booking.booking_number, cancelledByRole, 'As requested or per policy.', summaryItemsCafe, bookingDbId)
+      templates.getBookingCancelledOwnerTemplate(ownerGreetingRole, booking.booking_number, cancelledByRole, 'As requested or per policy.', summaryItemsCafe, bookingDbId)
     );
     if (booking.event_services?.user_id) {
       await notifyUser(
@@ -450,22 +416,33 @@ const notifyBookingStatusUpdated = async (booking, status, cancelledByRole = 'Sy
       console.error('Failed to send admin cancellation email:', adminErr.message);
     }
   } else if (status === 'CONFIRMED') {
-     await notifyUser(
+    // Notify Cafe Owner
+    const cafeConfirmedMsg = cancelledByRole === 'Event Manager'
+      ? `Booking ${booking.booking_number} at your venue has been accepted & confirmed by Event Manager (${booking.event_services?.service_name || 'Event Team'}).`
+      : `You have confirmed booking ${booking.booking_number}.`;
+
+    await notifyUser(
       booking.cafes.owner_id,
       'Booking Confirmed',
-      `You have confirmed booking ${booking.booking_number}.`,
+      cafeConfirmedMsg,
       'BOOKING_CONFIRMED',
       booking.id,
-      templates.getBookingConfirmedAdminTemplate('Cafe Owner', booking.booking_number, summaryItemsCafe, bookingDbId)
+      templates.getBookingConfirmedAdminTemplate(ownerGreetingRole, booking.booking_number, summaryItemsCafe, bookingDbId)
     );
+
+    // Notify Event Manager
     if (booking.event_services?.user_id) {
+      const emConfirmedMsg = cancelledByRole === 'Event Manager'
+        ? `You have accepted & confirmed booking ${booking.booking_number}. Customer and cafe have been notified.`
+        : `Booking ${booking.booking_number} at ${booking.cafes?.name || 'venue'} has been confirmed by Cafe Owner.`;
+
       await notifyUser(
         booking.event_services.user_id,
         'Booking Confirmed',
-        `Booking ${booking.booking_number} has been confirmed.`,
+        emConfirmedMsg,
         'BOOKING_CONFIRMED',
         booking.id,
-        templates.getBookingConfirmedAdminTemplate('Event Manager', booking.booking_number, summaryItemsEvent, bookingDbId)
+        templates.getBookingConfirmedAdminTemplate('Event Manager', booking.booking_number, summaryItemsEvent, bookingDbId, true)
       );
     }
   }
@@ -481,12 +458,13 @@ const getNotifications = async (userId, filters) => {
       message: n.message,
       type: n.notification_type || 'INFO',
       notification_type: n.notification_type || 'INFO',
+      booking_id: n.booking_id || null,
       channel: n.channel || 'IN_APP',
       status: n.status,
       is_read: n.read_at !== null,
       created_at: n.created_at,
       sent_at: n.sent_at || n.created_at,
-      link: n.booking_id ? `/owner/bookings/${n.booking_id}` : null
+      link: n.booking_id ? `/customer/bookings` : null
     }))
   };
 };
@@ -500,10 +478,12 @@ const getNotificationById = async (userId, id) => {
       title: n.title,
       message: n.message,
       type: n.notification_type || 'INFO',
+      notification_type: n.notification_type || 'INFO',
+      booking_id: n.booking_id || null,
       status: n.status,
       is_read: n.read_at !== null,
       created_at: n.created_at,
-      link: n.booking_id ? `/owner/bookings/${n.booking_id}` : null
+      link: n.booking_id ? `/customer/bookings` : null
     }
   };
 };

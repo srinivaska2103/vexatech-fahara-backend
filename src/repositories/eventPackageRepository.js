@@ -128,6 +128,16 @@ const eventPackageRepository = {
 
   // Get All Packages for a Provider
   getPackagesByProvider: async (providerId, providerType) => {
+    // If provider is EVENT_MANAGER, verify the manager's profile is active
+    if (providerType === 'EVENT_MANAGER') {
+      const profile = await prisma.event_management_profiles.findFirst({
+        where: { user_id: providerId }
+      });
+      if (profile && profile.is_active === false) {
+        return [];
+      }
+    }
+
     const where = { provider_id: providerId, is_active: true };
     if (providerType) where.provider_type = providerType;
 
@@ -148,6 +158,14 @@ const eventPackageRepository = {
 
   // Get Packages by Provider and Event Type (BASIC, STANDARD, PREMIUM)
   getPackagesByEvent: async (providerId, eventType) => {
+    // If provider has an event management profile, check its active state
+    const profile = await prisma.event_management_profiles.findFirst({
+      where: { user_id: providerId }
+    });
+    if (profile && profile.is_active === false) {
+      return [];
+    }
+
     return await prisma.event_packages.findMany({
       where: {
         provider_id: providerId,
@@ -180,6 +198,28 @@ const eventPackageRepository = {
           },
         },
       },
+    });
+  },
+
+  // Get All Packages with optional filters
+  getAllPackages: async (filters = {}) => {
+    const where = { is_active: true };
+    if (filters.provider_id) where.provider_id = filters.provider_id;
+    if (filters.provider_type) where.provider_type = filters.provider_type;
+    if (filters.event_type) where.event_type = filters.event_type;
+
+    return await prisma.event_packages.findMany({
+      where,
+      include: {
+        inclusions: {
+          where: { is_active: true },
+          orderBy: { display_order: 'asc' },
+          include: {
+            tiers: true,
+          },
+        },
+      },
+      orderBy: [{ updated_at: 'desc' }],
     });
   },
 

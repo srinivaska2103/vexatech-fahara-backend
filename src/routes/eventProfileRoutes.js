@@ -130,6 +130,8 @@ router.post('/', protect, authorizeRoles('EVENT_MANAGER'), validateRequest(profi
  *         description: Event profile updated
  */
 router.put('/me', protect, authorizeRoles('EVENT_MANAGER'), validateRequest(profileSchema), eventProfileController.updateProfile);
+router.patch('/me/availability', protect, authorizeRoles('EVENT_MANAGER'), eventProfileController.toggleServiceAvailability);
+router.put('/me/availability', protect, authorizeRoles('EVENT_MANAGER'), eventProfileController.toggleServiceAvailability);
 
 /**
  * @swagger

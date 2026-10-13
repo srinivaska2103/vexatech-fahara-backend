@@ -99,6 +99,16 @@ const getProfileById = async (req, res, next) => {
   }
 };
 
+const toggleServiceAvailability = async (req, res, next) => {
+  try {
+    const { is_active } = req.body;
+    const result = await eventProfileService.toggleServiceAvailability(req.user.id, is_active);
+    res.status(200).json({ success: true, data: result, is_available: result.is_active });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProfile,
   getAllProfiles,
@@ -108,6 +118,7 @@ module.exports = {
   updateBusinessHours,
   updateProfileStatus,
   getPaymentAccount,
-  updatePaymentAccount
+  updatePaymentAccount,
+  toggleServiceAvailability
 };
 

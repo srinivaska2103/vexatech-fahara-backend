@@ -22,6 +22,22 @@ const eventPackageController = {
     }
   },
 
+  getAllPackages: async (req, res) => {
+    try {
+      const filters = req.query || {};
+      const packages = await eventPackageService.getAllPackages(filters);
+      return res.status(200).json({
+        success: true,
+        data: packages,
+      });
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to fetch event packages',
+      });
+    }
+  },
+
   getPackagesByProvider: async (req, res) => {
     try {
       const { providerId } = req.params;

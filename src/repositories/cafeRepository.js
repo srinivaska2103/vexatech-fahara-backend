@@ -1,4 +1,6 @@
 const prisma = require('../config/prisma');
+const { getCustomerVisibleCafeWhereClause, enrichCafeWithVisibility } = require('../services/cafeVisibilityService');
+
 const createCafe = async (cafeData) => {
   return await prisma.cafes.create({
     data: cafeData,
@@ -20,6 +22,23 @@ const sanitizeCafe = (cafe) => {
     bank_verification_reference,
     ...cleanCafe
   } = cafe;
+  
+  if (cleanCafe.users && cleanCafe.users.partner_subscriptions) {
+    delete cleanCafe.users.partner_subscriptions;
+  }
+
+  // Prevent giant multi-megabyte base64 images from stalling the network/browser
+  // If gallery items are raw base64 data URLs exceeding 100KB, cap or keep only the primary items
+  if (Array.isArray(cleanCafe.gallery)) {
+    cleanCafe.gallery = cleanCafe.gallery.slice(0, 4).filter(img => {
+      if (typeof img === 'string') {
+        // If it's a huge base64 string (>200KB), omit if not cover
+        return img.length < 250000 || img.startsWith('http') || img.startsWith('/');
+      }
+      return true;
+    });
+  }
+
   return cleanCafe;
 };
 
@@ -129,11 +148,21 @@ const findAllCafes = async (query = {}) => {
   
   if (query.owner_id) {
     where.owner_id = query.owner_id;
-  } else if (query.status && query.status !== 'ALL' && query.status !== 'all') {
-    where.status = query.status.toUpperCase();
-  } else if (!query.admin && !query.include_all) {
-    // For public customer UI searches, show active cafes
-    where.status = { in: ['ACTIVE', 'APPROVED'] };
+    if (query.status && query.status !== 'ALL' && query.status !== 'all') {
+      where.status = query.status.toUpperCase();
+    }
+  } else if (query.admin || query.include_all) {
+    if (query.status && query.status !== 'ALL' && query.status !== 'all') {
+      where.status = query.status.toUpperCase();
+    }
+  } else {
+    // For public customer UI searches, strictly enforce database-level customer visibility
+    const visibleWhere = getCustomerVisibleCafeWhereClause();
+    where.status = visibleWhere.status;
+    where.users = {
+      ...(where.users || {}),
+      ...visibleWhere.users
+    };
   }
 
   if (query.query) {
@@ -156,7 +185,10 @@ const findAllCafes = async (query = {}) => {
       { category: { contains: 'Dining', mode: 'insensitive' } }
     ];
   } else if (query.type === 'CAFE' || query.venue_type === 'CAFE' || query.role === 'CAFE_OWNER') {
-    where.users = { roles: { name: { in: ['CAFE_OWNER', 'WALKING_CAFE_OWNER'] } } };
+    where.users = {
+      ...(where.users || {}),
+      roles: { name: { in: ['CAFE_OWNER', 'WALKING_CAFE_OWNER'] } }
+    };
   }
   
   if (
@@ -295,12 +327,6 @@ const findAllCafes = async (query = {}) => {
     }
   }
 
-  if (query.status && !query.owner_id) {
-    // if a specific status is requested by a non-owner, it's ignored or overriden above.
-  } else if (query.status && query.owner_id) {
-    where.status = query.status;
-  }
-
   const page = parseInt(query.page) || 1;
   const limit = parseInt(query.limit) || 12;
   const skip = (page - 1) * limit;
@@ -312,14 +338,33 @@ const findAllCafes = async (query = {}) => {
     orderBy: { created_at: 'desc' },
     include: {
       users: {
-        select: { name: true, email: true, phone: true, address: true, city: true, state: true, country: true, pincode: true },
+        select: {
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          city: true,
+          state: true,
+          country: true,
+          pincode: true,
+          partner_subscriptions: {
+            select: {
+              id: true,
+              status: true,
+              current_period_end: true,
+              cancel_at_period_end: true
+            }
+          }
+        },
       },
       cafe_packages: true,
       cafe_business_hours: true,
       reviews: true,
     },
   });
-  return await stitchMediaToCafes(cafes);
+
+  const enrichedCafes = enrichCafeWithVisibility(cafes);
+  return await stitchMediaToCafes(enrichedCafes);
 };
 
 const findCafeById = async (id) => {
@@ -328,12 +373,29 @@ const findCafeById = async (id) => {
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
   if (!isUuid) return null;
 
+  const userSelect = {
+    name: true,
+    email: true,
+    phone: true,
+    address: true,
+    city: true,
+    state: true,
+    country: true,
+    pincode: true,
+    partner_subscriptions: {
+      select: {
+        id: true,
+        status: true,
+        current_period_end: true,
+        cancel_at_period_end: true
+      }
+    }
+  };
+
   let cafe = await prisma.cafes.findUnique({
     where: { id: cleanId },
     include: {
-      users: {
-        select: { name: true, email: true, phone: true, address: true, city: true, state: true, country: true, pincode: true },
-      },
+      users: { select: userSelect },
       cafe_packages: true,
       cafe_business_hours: true,
       reviews: true,
@@ -344,9 +406,7 @@ const findCafeById = async (id) => {
     cafe = await prisma.cafes.findFirst({
       where: { owner_id: cleanId },
       include: {
-        users: {
-          select: { name: true, email: true, phone: true, address: true, city: true, state: true, country: true, pincode: true },
-        },
+        users: { select: userSelect },
         cafe_packages: true,
         cafe_business_hours: true,
         reviews: true,
@@ -354,7 +414,8 @@ const findCafeById = async (id) => {
     });
   }
 
-  return await stitchMediaToCafes(cafe);
+  const enriched = cafe ? enrichCafeWithVisibility(cafe) : null;
+  return await stitchMediaToCafes(enriched);
 };
 
 const updateCafe = async (id, updateData) => {

@@ -49,12 +49,26 @@ const toggleFavorite = async (userId, cafeId) => {
     });
     return { isFavorite: false, message: 'Removed from favorites' };
   } else {
-    await prisma.favorites.create({
-      data: {
-        user_id: userId,
-        cafe_id: cafeId,
+    try {
+      await prisma.favorites.create({
+        data: {
+          user_id: userId,
+          cafe_id: cafeId,
+        }
+      });
+    } catch (err) {
+      if (err.code === 'P2002') {
+        // If concurrent duplicate requests race, safely toggle off or handle idempotently
+        await prisma.favorites.deleteMany({
+          where: {
+            user_id: userId,
+            cafe_id: cafeId,
+          }
+        });
+        return { isFavorite: false, message: 'Removed from favorites' };
       }
-    });
+      throw err;
+    }
 
     // Non-blocking analytics record for wishlist add
     try {

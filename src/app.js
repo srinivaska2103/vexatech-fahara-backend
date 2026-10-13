@@ -20,6 +20,7 @@ const auditRoutes = require('./routes/auditRoutes');
 const financeRoutes = require('./routes/financeRoutes');
 const favoriteRoutes = require('./routes/favoriteRoutes');
 const tableRoutes = require('./routes/tableRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 const requestLogger = require('./middlewares/requestLogger');
 const app = express();
@@ -93,12 +94,24 @@ app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/audit', auditRoutes);
 app.use('/api/v1/favorites', favoriteRoutes);
 app.use('/api/v1/support', require('./routes/supportRoutes'));
+app.use('/api/v1/admin/subscriptions', require('./routes/adminSubscriptionRoutes'));
+app.use('/api/v1/subscriptions', subscriptionRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/v1/event-manager/subscription', subscriptionRoutes);
 app.use('/api/v1/loyalty', require('./routes/loyaltyRoutes'));
 app.use('/api/loyalty', require('./routes/loyaltyRoutes'));
+app.use('/api/v1/qr', require('./routes/qrRoutes'));
+app.use('/api/qr', require('./routes/qrRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {
   res.send('Welcome to Fahara Backend API');
+});
+
+// Redirect /customer/cafe browser hits to Next.js User App
+app.use('/customer/cafe', (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  res.redirect(`${frontendUrl}${req.originalUrl}`);
 });
 
 // 404 Route Not Found Handler

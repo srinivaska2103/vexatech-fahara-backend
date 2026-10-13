@@ -4,6 +4,7 @@ const tableController = require('../controllers/tableController');
 const validateRequest = require('../middlewares/validateRequest');
 const { protect } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 
 const router = express.Router({ mergeParams: true });
 
@@ -53,20 +54,20 @@ router.get('/next-number', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWN
 router.get(['/', ''], tableController.getTablesByCafe);
 
 // POST create table
-router.post(['/', ''], protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(createTableSchema), tableController.createTable);
+router.post(['/', ''], protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(createTableSchema), tableController.createTable);
 
 // PATCH / PUT update table
-router.patch('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(updateTableSchema), tableController.updateTable);
-router.put('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(updateTableSchema), tableController.updateTable);
+router.patch('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(updateTableSchema), tableController.updateTable);
+router.put('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(updateTableSchema), tableController.updateTable);
 
 // PATCH update status
-router.patch('/:tableId/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(statusSchema), tableController.updateTableStatus);
+router.patch('/:tableId/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(statusSchema), tableController.updateTableStatus);
 
 // DELETE table
-router.delete('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), tableController.deleteTable);
+router.delete('/:tableId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, tableController.deleteTable);
 
 // POST / PUT table combinations
-router.post('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(combinationSchema), tableController.setTableCombinations);
-router.put('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(combinationSchema), tableController.setTableCombinations);
+router.post('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(combinationSchema), tableController.setTableCombinations);
+router.put('/:tableId/combinations', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(combinationSchema), tableController.setTableCombinations);
 
 module.exports = router;

@@ -1936,10 +1936,26 @@ const getOwnerSettlements = async (ownerId, query) => {
   const refundedBookingIds = Array.from(new Set(dbRefunds.map(r => r.booking_id).filter(Boolean)));
 
   const targetVendorType = query.vendor_type || 'CAFE';
+  
+  // Build settlement_status filter
+  let settlementStatusCondition = { notIn: ['REVERSED', 'CANCELLED'] };
+  if (query.status && query.status.toUpperCase() !== 'ALL') {
+    const sQuery = query.status.toUpperCase();
+    if (['SETTLED', 'COMPLETED', 'SUCCESS'].includes(sQuery)) {
+      settlementStatusCondition = { in: ['SETTLED', 'COMPLETED', 'SUCCESS'] };
+    } else if (sQuery === 'PENDING') {
+      settlementStatusCondition = 'PENDING';
+    } else if (sQuery === 'PROCESSING') {
+      settlementStatusCondition = 'PROCESSING';
+    } else if (['FAILED', 'REVERSED'].includes(sQuery)) {
+      settlementStatusCondition = { in: ['FAILED', 'REVERSED'] };
+    }
+  }
+
   const splits = await prisma.payment_splits.findMany({
     where: {
       vendor_type: targetVendorType,
-      settlement_status: { notIn: ['REVERSED', 'CANCELLED'] },
+      settlement_status: settlementStatusCondition,
       payments: {
         id: { notIn: refundedPaymentIds },
         status: { notIn: ['REFUNDED', 'PARTIALLY_REFUNDED', 'CANCELLED', 'FAILED'] },
@@ -2057,9 +2073,21 @@ const getOwnerSettlements = async (ownerId, query) => {
     };
   });
 
+  let finalData = formatted;
+  if (query.status && query.status.toUpperCase() !== 'ALL') {
+    const sQuery = query.status.toUpperCase();
+    finalData = formatted.filter(s => {
+      const st = String(s.status || s.settlement_status || '').toUpperCase();
+      if (['SETTLED', 'COMPLETED', 'SUCCESS'].includes(sQuery)) {
+        return ['SETTLED', 'COMPLETED', 'SUCCESS'].includes(st);
+      }
+      return st === sQuery;
+    });
+  }
+
   return {
-    data: formatted,
-    pagination: { total: formatted.length, page: 1, totalPages: 1 }
+    data: finalData,
+    pagination: { total: finalData.length, page: 1, totalPages: 1 }
   };
 };
 

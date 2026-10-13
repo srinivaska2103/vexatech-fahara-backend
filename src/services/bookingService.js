@@ -32,7 +32,16 @@ const createBooking = async (userId, data) => {
   } = data;
 
 
-  // 1. Validate Cafe & Bank Verification
+  // 1. Validate Cafe & Customer Visibility & Bank Verification
+  const { isCafeCustomerVisible } = require('./cafeVisibilityService');
+  const isVisible = await isCafeCustomerVisible(cafe_id);
+  if (!isVisible) {
+    const error = new Error('This cafe is currently unavailable for new bookings.');
+    error.statusCode = 403;
+    error.code = 'CAFE_NOT_AVAILABLE';
+    throw error;
+  }
+
   const cafe = await cafeRepository.findCafeById(cafe_id);
   if (!cafe) {
     const error = new Error('Cafe not found');
@@ -94,7 +103,7 @@ const createBooking = async (userId, data) => {
   }
 
   // 3. Pricing Calculation
-  let base_cafe_charge = Number(cafe.price_per_hour || 0) * hours;
+  let base_cafe_charge = (cafe.provides_event_services === true) ? 0 : (Number(cafe.price_per_hour || 0) * hours);
   let package_add_on_charge = 0;
   let event_service_amount = 0;
   let actual_package_id = package_id;
@@ -141,7 +150,13 @@ const createBooking = async (userId, data) => {
           throw error;
         }
 
-        event_service_amount += Number(extService.price !== null && extService.price !== undefined ? extService.price : 0);
+        const baseServicePrice = Number(extService.price !== null && extService.price !== undefined ? extService.price : 0);
+        const pType = (extService.pricing_type || 'FIXED').toUpperCase();
+        if (pType === 'PER_GUEST') {
+          event_service_amount = baseServicePrice * validatedGuestCount;
+        } else {
+          event_service_amount = baseServicePrice;
+        }
       }
     }
   }
@@ -168,9 +183,11 @@ const createBooking = async (userId, data) => {
       }
 
       const baseServicePrice = Number(extService.price !== null && extService.price !== undefined ? extService.price : 0);
-      // Only add base service price if service has an explicit base price and no inclusions override it
-      if (baseServicePrice > 0 && (!extService.inclusions || extService.inclusions.length === 0)) {
-        event_service_amount += baseServicePrice;
+      const pType = (extService.pricing_type || 'FIXED').toUpperCase();
+      if (pType === 'PER_GUEST') {
+        event_service_amount = baseServicePrice * validatedGuestCount;
+      } else {
+        event_service_amount = baseServicePrice;
       }
     }
   }
@@ -432,11 +449,8 @@ const createBooking = async (userId, data) => {
         });
       }
 
-      if (matchedProviderType === 'CAFE') {
-        package_add_on_charge += packageInclusionsTotal;
-      } else {
-        event_service_amount += packageInclusionsTotal;
-      }
+      // Inclusions are included features within the package price
+      // (packageInclusionsTotal is not added as separate line items)
     }
 
   // Calculate Selected Optional Add-ons Charges strictly on backend
@@ -650,6 +664,31 @@ const createBooking = async (userId, data) => {
     }
   }
 
+  // Event Service base package item if present
+  if (actual_event_service_id && eventServiceEntity) {
+    const baseServicePrice = Number(eventServiceEntity.price !== null && eventServiceEntity.price !== undefined ? eventServiceEntity.price : 0);
+    const pType = (eventServiceEntity.pricing_type || 'FIXED').toUpperCase();
+    const serviceAmount = pType === 'PER_GUEST' ? baseServicePrice * validatedGuestCount : baseServicePrice;
+
+    itemsToCreate.push({
+      booking_id: createdBooking.id,
+      provider_type: 'EVENT',
+      item_type: 'PACKAGE',
+      provider_id: actual_event_service_id,
+      package_id: actual_event_service_id,
+      item_name: eventServiceEntity.service_name || eventServiceEntity.title || eventServiceEntity.name || 'Event Service Package',
+      package_name: eventServiceEntity.service_name || eventServiceEntity.title || eventServiceEntity.name || 'Event Service Package',
+      pricing_type: pType,
+      unit_price: baseServicePrice,
+      quantity: pType === 'PER_GUEST' ? validatedGuestCount : 1,
+      guest_count: validatedGuestCount,
+      amount: serviceAmount,
+      is_package_base: true,
+      is_addon: false,
+      description: eventServiceEntity.description || null
+    });
+  }
+
   // Add parsed inclusion items to itemsToCreate
   selectedInclusionItems.forEach(incItem => {
     const formattedLevel = incItem.level || incItem.tier_level ||
@@ -667,9 +706,9 @@ const createBooking = async (userId, data) => {
       tier_name: incItem.tier_name,
       package_level: formattedLevel,
       pricing_type: incItem.pricing_type,
-      unit_price: incItem.unit_price,
+      unit_price: 0,
       quantity: incItem.quantity,
-      amount: incItem.amount,
+      amount: 0,
       description: incItem.description
     });
   });
@@ -787,25 +826,40 @@ const getCafeBookings = async (ownerId, query = {}, userRole = 'CAFE_OWNER') => 
 
   // Frontend expects mapped format
   return bookings.map(b => {
-    let cafeNet = Number(b.cafe_amount || 0);
     let itemizedCafeTotal = 0;
+    let itemizedEventTotal = 0;
+
     if (Array.isArray(b.booking_items) && b.booking_items.length > 0) {
-      const cafeItems = b.booking_items.filter(it => it.provider_type === 'CAFE' || it.item_type === 'CAFE_INCLUSION' || it.item_type === 'CAFE_CHARGE' || it.item_type === 'PACKAGE' || it.item_type === 'PACKAGE_BASE');
-      itemizedCafeTotal = cafeItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      itemizedCafeTotal = b.booking_items
+        .filter(it => it.provider_type === 'CAFE' || it.item_type === 'CAFE_INCLUSION' || it.item_type === 'CAFE_CHARGE')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+      itemizedEventTotal = b.booking_items
+        .filter(it => it.provider_type === 'EVENT' || it.item_type === 'EVENT_INCLUSION')
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     }
-    if (itemizedCafeTotal > 0) {
-      cafeNet = Math.max(cafeNet, itemizedCafeTotal);
+
+    // Determine Cafe Net Earning
+    let cafeNet = Number(b.cafe_amount || 0);
+    if (cafeNet === 0 && itemizedCafeTotal > 0) {
+      cafeNet = itemizedCafeTotal;
     }
+    // If cafe_amount is not recorded, check if there is an event service and subtract it from subtotal
     if (cafeNet === 0 && (b.subtotal || b.total)) {
-      const calcSub = Number(b.total || b.subtotal || 0);
-      const evAmt = Number(b.event_service_amount || 0);
-      cafeNet = calcSub >= evAmt ? (calcSub - evAmt) : calcSub;
+      const calcSub = Number(b.subtotal || b.total || 0);
+      const evAmt = Number(b.event_service_amount || itemizedEventTotal || 0);
+      cafeNet = Math.max(0, calcSub - evAmt);
     }
-    cafeNet = Math.max(0, cafeNet);
+
+    // Determine Event Manager Net Earning
+    let eventNet = Number(b.event_service_amount || 0);
+    if (eventNet === 0 && itemizedEventTotal > 0) {
+      eventNet = itemizedEventTotal;
+    }
 
     const calculatedAmount = userRole === 'EVENT_MANAGER'
-      ? Number(b.event_service_amount || 0)
-      : (cafeNet > 0 ? cafeNet : Number(b.total || b.subtotal || 0));
+      ? Number(eventNet.toFixed(2))
+      : Number(cafeNet.toFixed(2));
 
     return {
       id: b.id,
@@ -819,6 +873,8 @@ const getCafeBookings = async (ownerId, query = {}, userRole = 'CAFE_OWNER') => 
       endTime: b.end_time,
       guests: b.total_persons,
       amount: calculatedAmount,
+      cafe_amount: Number(cafeNet.toFixed(2)),
+      event_service_amount: Number(eventNet.toFixed(2)),
       status: b.booking_status,
       paymentStatus: b.payment_status || 'PENDING',
       createdAt: b.created_at,
@@ -851,9 +907,57 @@ const getAllAdminBookings = async (query = {}) => {
   }));
 };
 
-const sanitizeBookingForPartner = (booking) => {
+const sanitizeBookingForPartner = (booking, userRole = 'CAFE_OWNER') => {
   if (!booking) return booking;
   const sanitized = { ...booking };
+
+  // Calculate itemized totals by provider
+  let itemizedCafeTotal = 0;
+  let itemizedEventTotal = 0;
+  if (Array.isArray(sanitized.booking_items) && sanitized.booking_items.length > 0) {
+    itemizedCafeTotal = sanitized.booking_items
+      .filter(it => it.provider_type === 'CAFE' || it.item_type === 'CAFE_INCLUSION' || it.item_type === 'CAFE_CHARGE')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    itemizedEventTotal = sanitized.booking_items
+      .filter(it => it.provider_type === 'EVENT' || it.item_type === 'EVENT_INCLUSION')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }
+
+  // Cafe net split calculation
+  let cafeNet = Number(sanitized.cafe_amount || 0);
+  if (cafeNet === 0 && itemizedCafeTotal > 0) {
+    cafeNet = itemizedCafeTotal;
+  }
+  if (cafeNet === 0 && (sanitized.subtotal || sanitized.total)) {
+    const calcSub = Number(sanitized.subtotal || sanitized.total || 0);
+    const evAmt = Number(sanitized.event_service_amount || itemizedEventTotal || 0);
+    cafeNet = Math.max(0, calcSub - evAmt);
+  }
+
+  // Event service net split calculation
+  let eventNet = Number(sanitized.event_service_amount || 0);
+  if (eventNet === 0 && itemizedEventTotal > 0) {
+    eventNet = itemizedEventTotal;
+  }
+
+  // Set net earnings specific to partner role
+  sanitized.cafe_earning = Number(cafeNet.toFixed(2));
+  sanitized.event_earning = Number(eventNet.toFixed(2));
+  sanitized.partner_earnings = userRole === 'EVENT_MANAGER' ? Number(eventNet.toFixed(2)) : Number(cafeNet.toFixed(2));
+
+  // Override total & subtotal to partner's net earning only (don't show total amount paid by user)
+  sanitized.total = sanitized.partner_earnings;
+  sanitized.subtotal = sanitized.partner_earnings;
+  sanitized.amount = sanitized.partner_earnings;
+
+  // Filter booking items visible to partner: only show items belonging to this partner
+  if (Array.isArray(sanitized.booking_items)) {
+    const expectedProvider = userRole === 'EVENT_MANAGER' ? 'EVENT' : 'CAFE';
+    sanitized.booking_items = sanitized.booking_items.filter(it => it.provider_type === expectedProvider);
+  }
+
+  // Remove platform charges & fees
   delete sanitized.fahara_service_charge;
   delete sanitized.gst;
   delete sanitized.transaction_fee;
@@ -898,7 +1002,7 @@ const getBookingById = async (id, userId, userRole) => {
   }
 
   if (userRole === 'CAFE_OWNER' || userRole === 'EVENT_MANAGER') {
-    return sanitizeBookingForPartner(booking);
+    return sanitizeBookingForPartner(booking, userRole);
   }
 
   return booking;

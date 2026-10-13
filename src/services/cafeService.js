@@ -2,6 +2,7 @@ const cafeRepository = require('../repositories/cafeRepository');
 const cafePackageRepository = require('../repositories/cafePackageRepository');
 const userRepository = require('../repositories/userRepository');
 const { syncVendorToCashfree } = require('./cashfreeVendorService');
+const { generateQrCodeId } = require('./qrService');
 
 // --- Cafe Services ---
 
@@ -39,6 +40,10 @@ const createCafe = async (userId, cafeData) => {
       event_packages: false,
       event_facilities: false
     };
+  }
+
+  if (!validCafeData.qr_code_id) {
+    validCafeData.qr_code_id = generateQrCodeId();
   }
 
   let cafe = await cafeRepository.createCafe({
@@ -92,22 +97,41 @@ const createCafe = async (userId, cafeData) => {
   return cafe;
 };
 
+const { getCustomerVisibleCafeWhereClause } = require('./cafeVisibilityService');
+
 const getAllCafes = async (query = {}) => {
   return await cafeRepository.findAllCafes(query);
 };
 
-const getCafeById = async (id) => {
+const getCafeById = async (id, requestingUser = null) => {
   const cafe = await cafeRepository.findCafeById(id);
   if (!cafe) {
     const error = new Error('Cafe not found');
     error.statusCode = 404;
     throw error;
   }
+
+  const isOwner = requestingUser?.id && String(cafe.owner_id).trim().toLowerCase() === String(requestingUser.id).trim().toLowerCase();
+  const isAdmin = requestingUser?.roles?.name === 'ADMIN' || requestingUser?.role === 'ADMIN';
+
+  if (!isOwner && !isAdmin) {
+    if (!cafe.customerVisibility || !cafe.customerVisibility.visible) {
+      const error = new Error('Cafe not found');
+      error.statusCode = 404;
+      throw error;
+    }
+  }
+
   return cafe;
 };
 
 const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') => {
-  const cafe = await getCafeById(cafeId);
+  const cafe = await cafeRepository.findCafeById(cafeId);
+  if (!cafe) {
+    const error = new Error('Cafe not found');
+    error.statusCode = 404;
+    throw error;
+  }
 
   console.log('updateCafe: userId =', userId, typeof userId, 'cafe.owner_id =', cafe.owner_id, typeof cafe.owner_id);
 
@@ -119,7 +143,8 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
   }
 
   // Filter out non-cafe fields like business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, working_hrs, workingHours
-  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, postalPincode, working_hrs, workingHours, ...validUpdateData } = updateData;
+  // Also preserve stable qr_code_id (never overwrite or clear it via update)
+  const { business_hours, rejection_reason, is_featured, email, phone, state, country, pincode, postalPincode, working_hrs, workingHours, qr_code_id, ...validUpdateData } = updateData;
   const pin = pincode || postalPincode;
 
   const isWalking = validUpdateData.is_walking_cafe === true || cafe.is_walking_cafe === true || userRole === 'WALKING_CAFE_OWNER' || validUpdateData.category === 'Walking Cafe';
@@ -179,7 +204,12 @@ const updateCafe = async (userId, cafeId, updateData, userRole = 'CAFE_OWNER') =
 
 
 const deleteCafe = async (userId, cafeId) => {
-  const cafe = await getCafeById(cafeId);
+  const cafe = await cafeRepository.findCafeById(cafeId);
+  if (!cafe) {
+    const error = new Error('Cafe not found');
+    error.statusCode = 404;
+    throw error;
+  }
 
   if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
     const error = new Error('Unauthorized to delete this cafe');
@@ -191,7 +221,12 @@ const deleteCafe = async (userId, cafeId) => {
 };
 
 const updateCafeBusinessHours = async (userId, cafeId, businessHours) => {
-  const cafe = await getCafeById(cafeId);
+  const cafe = await cafeRepository.findCafeById(cafeId);
+  if (!cafe) {
+    const error = new Error('Cafe not found');
+    error.statusCode = 404;
+    throw error;
+  }
 
   if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
     const error = new Error('Unauthorized to update this cafe');
@@ -215,7 +250,12 @@ const getPackageById = async (packageId) => {
 };
 
 const addPackageToCafe = async (userId, cafeId, packageData) => {
-  const cafe = await getCafeById(cafeId);
+  const cafe = await cafeRepository.findCafeById(cafeId);
+  if (!cafe) {
+    const error = new Error('Cafe not found');
+    error.statusCode = 404;
+    throw error;
+  }
 
   if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
     const error = new Error('Unauthorized to add package to this cafe');
@@ -253,64 +293,50 @@ const addPackageToCafe = async (userId, cafeId, packageData) => {
     is_active
   } = packageData;
 
-  let mergedInclusions;
-  if (Array.isArray(inclusions)) {
-    mergedInclusions = inclusions.map((inc, idx) => {
-      const incId = inc.id || inc.inclusionId || inc.inclusion_id || `inc_${Date.now()}_${idx}`;
-      const tiers = Array.isArray(inc.tiers) ? inc.tiers.map((t, tIdx) => {
-        const tName = (t.tier_name || t.name || t.tierName || 'STANDARD').toUpperCase();
-        const tId = t.id || t.tier_id || t.tierId || `${incId}_tier_${tName.toLowerCase()}`;
-        return {
-          ...t,
-          id: tId,
-          tier_id: tId,
-          tierId: tId,
-          tier_name: tName,
-          tierName: tName,
-          unit_price: t.unit_price !== undefined ? Number(t.unit_price) : (t.unitPrice !== undefined ? Number(t.unitPrice) : 0),
-          pricing_type: String(t.pricing_type || t.pricingType || inc.pricing_type || 'FIXED').toUpperCase(),
-          description: t.description || null
-        };
-      }) : [];
-      return {
-        ...inc,
-        id: incId,
-        inclusion_id: incId,
-        tiers
-      };
-    });
-  } else {
-    mergedInclusions = {
-      ...(inclusions || {}),
-      event_type: event_type || custom_category || undefined,
-      custom_category: custom_category || undefined,
-      status: status || 'ACTIVE',
-      food: food !== undefined ? Boolean(food) : false,
-      cake: cake !== undefined ? Boolean(cake) : false,
-      decoration: decoration !== undefined ? Boolean(decoration) : false,
-      music: music !== undefined ? Boolean(music) : false,
-      other: other !== undefined ? Boolean(other) : false,
-      other_text: other_text || undefined,
-      food_items: food_items || [],
-      cake_items: cake_items || [],
-      decoration_items: decoration_items || [],
-      music_items: music_items || [],
-      other_items: other_items || []
+  const selectedEventType = event_type || custom_category || packageData.category || 'Birthday';
+  const durationVal = packageData.duration_value || packageData.duration_hours || null;
+  const durationUnit = packageData.duration_unit || 'Hours';
+
+  const rawInclusionsList = Array.isArray(inclusions) ? inclusions : (inclusions?.items || inclusions?.inclusions || []);
+  const cleanInclusionsList = rawInclusionsList.map((inc, idx) => {
+    const incName = typeof inc === 'string' ? inc : (inc.name || inc.title || inc.item_name || `Inclusion ${idx + 1}`);
+    return {
+      name: String(incName).trim(),
+      description: inc.description ? String(inc.description).trim() : null,
+      quantity: inc.quantity ? Number(inc.quantity) : 1,
+      unit: inc.unit ? String(inc.unit).trim() : 'Item',
+      unit_price: inc.unit_price ? Number(inc.unit_price) : 0
     };
-  }
+  });
+
+  const mergedInclusionsJSON = {
+    event_type: selectedEventType,
+    category: selectedEventType,
+    custom_category: custom_category || undefined,
+    duration_value: durationVal,
+    duration_unit: durationUnit,
+    status: status || 'ACTIVE',
+    items: cleanInclusionsList,
+    inclusions: cleanInclusionsList,
+  };
 
   const validPrismaData = {
     cafe_id: cafeId,
+    event_type: selectedEventType,
     package_name: package_name || 'Event Package',
     description: description || null,
     price: price !== undefined && price !== null ? Number(price) : 0,
     minimum_persons: minimum_persons ? Number(minimum_persons) : null,
     maximum_persons: maximum_persons ? Number(maximum_persons) : null,
-    duration_hours: duration_hours ? Number(duration_hours) : null,
+    duration_hours: durationVal ? Number(durationVal) : null,
+    duration_unit: durationUnit,
     cover_image: cover_image || null,
     gallery: gallery || null,
     is_active: is_active !== undefined ? Boolean(is_active) : true,
-    inclusions: mergedInclusions,
+    inclusions: mergedInclusionsJSON,
+    cafe_package_inclusions: {
+      create: cleanInclusionsList
+    }
   };
 
   const newPackage = await cafePackageRepository.createPackage(validPrismaData);
@@ -331,11 +357,14 @@ const updatePackage = async (userId, packageId, updateData) => {
     throw error;
   }
 
-  const cafe = await getCafeById(pkg.cafe_id);
-  if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
-    const error = new Error('Unauthorized to update this package');
-    error.statusCode = 403;
-    throw error;
+  const targetCafeId = pkg.cafe_id || updateData?.cafe_id;
+  if (targetCafeId) {
+    const cafe = await cafeRepository.findCafeById(targetCafeId);
+    if (cafe && String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
+      const error = new Error('Unauthorized to update this package');
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   const { 
@@ -343,20 +372,7 @@ const updatePackage = async (userId, packageId, updateData) => {
     gallery,
     event_type, 
     status, 
-    food, 
-    cake, 
-    decoration, 
-    music, 
-    other, 
-    other_text,
-    food_items,
-    cake_items,
-    decoration_items,
-    music_items,
-    other_items,
     custom_category,
-    terms,
-    availableDays,
     inclusions, 
     package_name,
     description,
@@ -367,65 +383,62 @@ const updatePackage = async (userId, packageId, updateData) => {
     is_active
   } = updateData;
 
-  let mergedInclusions;
-  if (Array.isArray(inclusions)) {
-    mergedInclusions = inclusions.map((inc, idx) => {
-      const incId = inc.id || inc.inclusionId || inc.inclusion_id || `inc_${Date.now()}_${idx}`;
-      const tiers = Array.isArray(inc.tiers) ? inc.tiers.map((t, tIdx) => {
-        const tName = (t.tier_name || t.name || t.tierName || 'STANDARD').toUpperCase();
-        const tId = t.id || t.tier_id || t.tierId || `${incId}_tier_${tName.toLowerCase()}`;
-        return {
-          ...t,
-          id: tId,
-          tier_id: tId,
-          tierId: tId,
-          tier_name: tName,
-          tierName: tName,
-          unit_price: t.unit_price !== undefined ? Number(t.unit_price) : (t.unitPrice !== undefined ? Number(t.unitPrice) : 0),
-          pricing_type: String(t.pricing_type || t.pricingType || inc.pricing_type || 'FIXED').toUpperCase(),
-          description: t.description || null
-        };
-      }) : [];
+  const selectedEventType = event_type || custom_category || updateData.category || pkg.event_type || (typeof pkg.inclusions === 'object' && pkg.inclusions?.event_type) || 'Birthday';
+  const durationVal = updateData.duration_value || updateData.duration_hours || pkg.duration_hours || null;
+  const durationUnit = updateData.duration_unit || pkg.duration_unit || 'Hours';
+
+  let cleanInclusionsList = [];
+  if (inclusions !== undefined) {
+    const rawInclusionsList = Array.isArray(inclusions) ? inclusions : (inclusions?.items || inclusions?.inclusions || []);
+    cleanInclusionsList = rawInclusionsList.map((inc, idx) => {
+      const incName = typeof inc === 'string' ? inc : (inc.name || inc.title || inc.item_name || `Inclusion ${idx + 1}`);
       return {
-        ...inc,
-        id: incId,
-        inclusion_id: incId,
-        tiers
+        name: String(incName).trim(),
+        description: inc.description ? String(inc.description).trim() : null,
+        quantity: inc.quantity ? Number(inc.quantity) : 1,
+        unit: inc.unit ? String(inc.unit).trim() : 'Item',
+        unit_price: inc.unit_price ? Number(inc.unit_price) : 0
       };
     });
-  } else {
-    mergedInclusions = {
-      ...(typeof pkg.inclusions === 'object' && pkg.inclusions !== null ? pkg.inclusions : {}),
-      ...(inclusions || {}),
-    };
-    if (event_type !== undefined) mergedInclusions.event_type = event_type;
-    if (custom_category !== undefined) mergedInclusions.custom_category = custom_category;
-    if (status !== undefined) mergedInclusions.status = status;
-    if (food !== undefined) mergedInclusions.food = Boolean(food);
-    if (cake !== undefined) mergedInclusions.cake = Boolean(cake);
-    if (decoration !== undefined) mergedInclusions.decoration = Boolean(decoration);
-    if (music !== undefined) mergedInclusions.music = Boolean(music);
-    if (other !== undefined) mergedInclusions.other = Boolean(other);
-    if (other_text !== undefined) mergedInclusions.other_text = other_text;
-    if (food_items !== undefined) mergedInclusions.food_items = food_items;
-    if (cake_items !== undefined) mergedInclusions.cake_items = cake_items;
-    if (decoration_items !== undefined) mergedInclusions.decoration_items = decoration_items;
-    if (music_items !== undefined) mergedInclusions.music_items = music_items;
-    if (other_items !== undefined) mergedInclusions.other_items = other_items;
   }
 
-  const validPrismaUpdate = { inclusions: mergedInclusions };
-  if (package_name !== undefined) validPrismaUpdate.package_name = package_name;
-  if (description !== undefined) validPrismaUpdate.description = description;
-  if (price !== undefined) validPrismaUpdate.price = Number(price);
-  if (minimum_persons !== undefined) validPrismaUpdate.minimum_persons = minimum_persons ? Number(minimum_persons) : null;
-  if (maximum_persons !== undefined) validPrismaUpdate.maximum_persons = maximum_persons ? Number(maximum_persons) : null;
-  if (duration_hours !== undefined) validPrismaUpdate.duration_hours = duration_hours ? Number(duration_hours) : null;
-  if (cover_image !== undefined) validPrismaUpdate.cover_image = cover_image;
-  if (gallery !== undefined) validPrismaUpdate.gallery = gallery;
-  if (is_active !== undefined) validPrismaUpdate.is_active = Boolean(is_active);
+  const mergedInclusionsJSON = {
+    event_type: selectedEventType,
+    category: selectedEventType,
+    custom_category: custom_category || undefined,
+    duration_value: durationVal,
+    duration_unit: durationUnit,
+    status: status || 'ACTIVE',
+    items: cleanInclusionsList,
+    inclusions: cleanInclusionsList,
+  };
 
-  const updatedPackage = await cafePackageRepository.updatePackage(packageId, validPrismaUpdate);
+  // Delete existing child inclusions and recreate if inclusions array was supplied
+  if (inclusions !== undefined) {
+    await prisma.cafe_package_inclusions.deleteMany({ where: { package_id: packageId } });
+  }
+
+  const validPrismaData = {
+    event_type: selectedEventType,
+    package_name: package_name !== undefined ? package_name : pkg.package_name,
+    description: description !== undefined ? description : pkg.description,
+    price: price !== undefined && price !== null ? Number(price) : pkg.price,
+    minimum_persons: minimum_persons !== undefined ? (minimum_persons ? Number(minimum_persons) : null) : pkg.minimum_persons,
+    maximum_persons: maximum_persons !== undefined ? (maximum_persons ? Number(maximum_persons) : null) : pkg.maximum_persons,
+    duration_hours: durationVal !== undefined ? (durationVal ? Number(durationVal) : null) : pkg.duration_hours,
+    duration_unit: durationUnit,
+    cover_image: cover_image !== undefined ? cover_image : pkg.cover_image,
+    gallery: gallery !== undefined ? gallery : pkg.gallery,
+    is_active: is_active !== undefined ? Boolean(is_active) : pkg.is_active,
+    inclusions: mergedInclusionsJSON,
+    ...(inclusions !== undefined ? {
+      cafe_package_inclusions: {
+        create: cleanInclusionsList
+      }
+    } : {})
+  };
+
+  const updatedPackage = await cafePackageRepository.updatePackage(packageId, validPrismaData);
 
   if (cover_image !== undefined) {
     await cafePackageRepository.upsertPackageMedia(packageId, cover_image);
@@ -443,11 +456,13 @@ const deletePackage = async (userId, packageId) => {
     throw error;
   }
 
-  const cafe = await getCafeById(pkg.cafe_id);
-  if (String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
-    const error = new Error('Unauthorized to delete this package');
-    error.statusCode = 403;
-    throw error;
+  if (pkg.cafe_id) {
+    const cafe = await cafeRepository.findCafeById(pkg.cafe_id);
+    if (cafe && String(cafe.owner_id).trim().toLowerCase() !== String(userId).trim().toLowerCase()) {
+      const error = new Error('Unauthorized to delete this package');
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   return await cafePackageRepository.deletePackage(packageId);
@@ -591,10 +606,8 @@ const getDiscoveryCategories = async () => {
   const prisma = require('../config/prisma');
   
   try {
-    // Canonical customer visibility filter: only ACTIVE / APPROVED cafes
-    const activeCafesWhere = {
-      status: { in: ['ACTIVE', 'APPROVED'] }
-    };
+    // Canonical customer visibility filter: only APPROVED/ACTIVE cafes with ACTIVE subscription
+    const activeCafesWhere = getCustomerVisibleCafeWhereClause();
 
     // Fetch only active, customer-visible cafes with their package relations
     const cafes = await prisma.cafes.findMany({

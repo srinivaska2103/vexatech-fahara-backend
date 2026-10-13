@@ -30,11 +30,18 @@ const errorHandler = (err, req, res, next) => {
     }
   }
 
-  res.status(statusCode).json({
+  const payload = {
     success: false,
     message,
-    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
-  });
+  };
+  if (err.code) {
+    payload.code = err.code;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    payload.stack = err.stack;
+  }
+
+  res.status(statusCode).json(payload);
 };
 
 module.exports = errorHandler;

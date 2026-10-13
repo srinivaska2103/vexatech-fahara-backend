@@ -34,7 +34,11 @@ const processRazorpayWebhook = async (req) => {
     return { status: 200, message: 'Ignored webhook with empty event' };
   }
 
-  // 2. Handle Payment Success (Captured or Order Paid)
+  // Handle Subscription Events
+  if (eventType.startsWith('subscription.') || (payload.payload && payload.payload.subscription)) {
+    const subscriptionService = require('./subscriptionService');
+    return await subscriptionService.syncRazorpaySubscriptionEvent(eventType, payload.payload || {});
+  }
   if (eventType === 'payment.captured' || eventType === 'order.paid' || eventType === 'payment.authorized') {
     const orderId = entity.order_id || entity.id;
     const paymentId = entity.id;

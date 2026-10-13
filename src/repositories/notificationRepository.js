@@ -2,6 +2,23 @@ const prisma = require('../config/prisma');
 const { emitNotificationToUser } = require('../config/socket');
 
 const saveNotification = async (data) => {
+  // Idempotency: Prevent duplicate notifications for same user + booking + type created within the last 60 seconds
+  if (data?.user_id && data?.notification_type) {
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const existing = await prisma.notifications.findFirst({
+      where: {
+        user_id: data.user_id,
+        booking_id: data.booking_id || null,
+        notification_type: data.notification_type,
+        created_at: { gte: oneMinuteAgo }
+      }
+    });
+    if (existing) {
+      console.log(`[saveNotification] Skipping duplicate notification for user ${data.user_id}, booking ${data.booking_id}, type ${data.notification_type}`);
+      return existing;
+    }
+  }
+
   const notification = await prisma.notifications.create({
     data,
   });

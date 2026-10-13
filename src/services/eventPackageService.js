@@ -2,14 +2,12 @@ const eventPackageRepository = require('../repositories/eventPackageRepository')
 
 const eventPackageService = {
   createOrUpdatePackage: async (packageData) => {
-    if (!packageData.provider_id || !packageData.provider_type || !packageData.event_type || !packageData.package_level) {
-      throw new Error('provider_id, provider_type, event_type, and package_level are required');
+    if (!packageData.provider_id || !packageData.provider_type || !packageData.event_type) {
+      throw new Error('provider_id, provider_type, and event_type are required');
     }
-    const validLevels = ['BASIC', 'STANDARD', 'PREMIUM'];
-    if (!validLevels.includes(packageData.package_level.toUpperCase())) {
-      throw new Error('package_level must be BASIC, STANDARD, or PREMIUM');
+    if (!packageData.package_level) {
+      packageData.package_level = 'CUSTOM';
     }
-    packageData.package_level = packageData.package_level.toUpperCase();
     return await eventPackageRepository.upsertPackage(packageData);
   },
 
@@ -27,6 +25,10 @@ const eventPackageService = {
       throw new Error('Package not found or inactive');
     }
     return pkg;
+  },
+
+  getAllPackages: async (filters = {}) => {
+    return await eventPackageRepository.getAllPackages(filters);
   },
 
   deletePackage: async (id) => {

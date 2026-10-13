@@ -4,6 +4,7 @@ const eventServiceController = require('../controllers/eventServiceController');
 const validateRequest = require('../middlewares/validateRequest');
 const { protect, optionalProtect } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 
 const router = express.Router();
 
@@ -12,8 +13,13 @@ const serviceSchema = Joi.object({
   service_name: Joi.string().required(),
   description: Joi.string().allow('', null),
   price: Joi.number().min(0).required(),
+  max_guests: Joi.number().allow(null).optional(),
+  min_guests: Joi.number().allow(null).optional(),
+  duration_hours: Joi.number().allow(null).optional(),
+  duration_unit: Joi.string().allow('', null).optional(),
+  pricing_type: Joi.string().allow('', null).optional(),
+  status: Joi.string().allow('', null).optional(),
   gallery: Joi.array().items(Joi.string()).optional(),
-  // Accept either legacy string array OR rich tiered-object array
   inclusions: Joi.array().items(
     Joi.alternatives().try(
       Joi.string(),
@@ -97,7 +103,7 @@ router.get('/:id', optionalProtect, eventServiceController.getServiceById);
  *       403:
  *         description: Forbidden (Not an EVENT_MANAGER)
  */
-router.post('/', protect, authorizeRoles('EVENT_MANAGER'), validateRequest(serviceSchema), eventServiceController.createService);
+router.post('/', protect, authorizeRoles('EVENT_MANAGER'), requireActivePartnerSubscription, validateRequest(serviceSchema), eventServiceController.createService);
 
 /**
  * @swagger
@@ -132,7 +138,7 @@ router.post('/', protect, authorizeRoles('EVENT_MANAGER'), validateRequest(servi
  *       200:
  *         description: Service updated
  */
-router.put('/:id', protect, authorizeRoles('EVENT_MANAGER'), validateRequest(serviceSchema), eventServiceController.updateService);
+router.put('/:id', protect, authorizeRoles('EVENT_MANAGER'), requireActivePartnerSubscription, validateRequest(serviceSchema), eventServiceController.updateService);
 
 /**
  * @swagger
@@ -152,7 +158,7 @@ router.put('/:id', protect, authorizeRoles('EVENT_MANAGER'), validateRequest(ser
  *       200:
  *         description: Service deleted
  */
-router.delete('/:id', protect, authorizeRoles('EVENT_MANAGER'), eventServiceController.deleteService);
+router.delete('/:id', protect, authorizeRoles('EVENT_MANAGER'), requireActivePartnerSubscription, eventServiceController.deleteService);
 
 
 

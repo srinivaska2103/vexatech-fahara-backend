@@ -41,11 +41,14 @@ const server = http.createServer(app);
 
 initSocket(server);
 
+const { startSubscriptionExpirationCron } = require('./utils/subscriptionExpirationCron');
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT} bound to 0.0.0.0 with WebSockets enabled`);
   // Start scheduled jobs
   startBookingStatusCron();
   startBirthdayPromotionCron();
+  startSubscriptionExpirationCron();
 });
 
 

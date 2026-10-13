@@ -112,7 +112,7 @@ const getIconNameByLabel = (label = '') => {
 };
 
 const generateBaseTemplate = ({ title, bodyHtml, summaryItems = [], bookingId = null, ctaLink = null, ctaText = 'View Now!', status = null }) => {
-  const metaLabels = ['Booking No', 'Cafe', 'Date', 'Time', 'Guests', 'Table Reserved', 'Package Inclusions', 'Event Service Package'];
+  const metaLabels = ['Booking No', 'Cafe', 'Date', 'Time', 'Guests', 'Table Reserved', 'Selected Package', 'Package Inclusions', 'Event Service Package'];
   const metaItems = summaryItems.filter(item => metaLabels.includes(item.label));
   const financialItems = summaryItems.filter(item => !metaLabels.includes(item.label));
 
@@ -347,14 +347,17 @@ const getPaymentSuccessfulOwnerTemplate = (ownerName, bookingId, amount, summary
 };
 
 // 5. Booking Confirmed (Customer)
-const getBookingConfirmedCustomerTemplate = (name, bookingId, summaryItems, bookingDbId = null) => {
+const getBookingConfirmedCustomerTemplate = (name, bookingId, summaryItems, bookingDbId = null, confirmedBy = 'host') => {
   const targetId = bookingDbId || bookingId;
+  const hostLabel = confirmedBy === 'Event Manager' 
+    ? 'The event manager has accepted and confirmed your booking' 
+    : (confirmedBy === 'Cafe Owner' ? 'The cafe owner has confirmed your reservation' : 'Your reservation has been confirmed');
   const bodyHtml = `
     <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${name},</p>
     <div style="background-color: #ECFDF5; border-left: 4px solid #059669; padding: 16px; margin: 20px 0; border-radius: 0 10px 10px 0;">
       <p style="font-size: 16px; color: #047857; margin: 0; font-weight: 800;">🎉 Booking #${bookingId} is Officially Confirmed!</p>
     </div>
-    <p style="font-size: 15px; color: #555555;">The cafe owner has confirmed your reservation. We look forward to hosting you!</p>
+    <p style="font-size: 15px; color: #555555;">${hostLabel}. We look forward to hosting you!</p>
   `;
   return generateBaseTemplate({ 
     title: 'Booking Confirmed ✨', 
@@ -732,6 +735,378 @@ const getBirthdayPromotionalTemplate = (name) => {
   });
 };
 
+const getNewSubscriptionAdminTemplate = (data) => {
+  const {
+    partnerName,
+    ownerName,
+    email,
+    phone,
+    partnerType,
+    planName,
+    price,
+    razorpaySubscriptionId,
+    activatedAt
+  } = data;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hello System Admin,</p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      A new partner subscription payment has been <strong>successfully verified & activated</strong> via Razorpay. Below are the subscription details:
+    </p>
+
+    <div style="background: #FFF8F0; border: 1px solid #E8DED5; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #6F4E37; font-size: 16px;">Partner Subscription Information</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Partner / Business Name:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${partnerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Partner Type:</td><td style="padding: 6px 0; color: #6F4E37; font-weight: 700;">${partnerType || 'CAFE'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Owner Name:</td><td style="padding: 6px 0; color: #2C1810;">${ownerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Owner Email:</td><td style="padding: 6px 0; color: #2C1810;">${email || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Owner Phone:</td><td style="padding: 6px 0; color: #2C1810;">${phone || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Subscription Plan:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${planName || 'FAHARA PARTNER'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Monthly Fee:</td><td style="padding: 6px 0; color: #059669; font-weight: 700;">₹${price || 1}/month</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Status:</td><td style="padding: 6px 0;"><span style="background-color: #ECFDF5; color: #065F46; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">ACTIVE</span></td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Razorpay Sub ID:</td><td style="padding: 6px 0; font-family: monospace; color: #6F4E37;">${razorpaySubscriptionId || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Activated Date:</td><td style="padding: 6px 0; color: #2C1810;">${activatedAt ? new Date(activatedAt).toLocaleString() : new Date().toLocaleString()}</td></tr>
+      </table>
+    </div>
+  `;
+
+  const summaryItems = [
+    { label: 'Partner Type', value: partnerType || 'CAFE' },
+    { label: 'Plan Name', value: planName || 'FAHARA PARTNER' },
+    { label: 'Verified Status', value: 'ACTIVE (Payment Verified)', isHighlight: true }
+  ];
+
+  return generateBaseTemplate({
+    title: 'New Partner Subscription Activated 🚀',
+    bodyHtml,
+    summaryItems,
+    ctaLink: `${ADMIN_FRONTEND_URL}/admin/subscriptions`,
+    ctaText: 'Open Subscription Portal'
+  });
+};
+
+const getSubscriptionCancelledAdminTemplate = (data) => {
+  const {
+    partnerName,
+    ownerName,
+    email,
+    phone,
+    partnerType,
+    planName,
+    price,
+    status,
+    cancelAtPeriodEnd,
+    periodStart,
+    periodEnd,
+    razorpaySubscriptionId,
+    cancelledAt
+  } = data;
+
+  const typeTitle = partnerType === 'EVENT_MANAGER' ? 'Event Manager' : (partnerType === 'RESTAURANT' ? 'Restaurant' : 'Cafe');
+  const periodText = periodStart && periodEnd 
+    ? `${new Date(periodStart).toLocaleDateString()} – ${new Date(periodEnd).toLocaleDateString()}` 
+    : 'Active Period';
+  const endDateText = periodEnd ? new Date(periodEnd).toLocaleDateString() : 'End of period';
+
+  const isStillActive = cancelAtPeriodEnd && status === 'ACTIVE';
+  const activeNotice = isStillActive
+    ? `<div style="background-color: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; font-size: 14px;">⚠️ Subscription will remain active until ${endDateText}.</div>`
+    : `<div style="background-color: #FEE2E2; border: 1px solid #FCA5A5; color: #991B1B; padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; font-size: 14px;">🔴 Subscription terminated immediately by Razorpay.</div>`;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hello System Admin,</p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      A partner has cancelled their Fahara subscription. Below are the verified details from the backend subscription lifecycle:
+    </p>
+
+    ${activeNotice}
+
+    <div style="background: #FFF8F0; border: 1px solid #E8DED5; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #6F4E37; font-size: 16px;">PARTNER DETAILS</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse; margin-bottom: 16px;">
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Business Type:</td><td style="padding: 6px 0; color: #6F4E37; font-weight: 700;">${typeTitle}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Business Name:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${partnerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Owner Name:</td><td style="padding: 6px 0; color: #2C1810;">${ownerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Email:</td><td style="padding: 6px 0; color: #2C1810;">${email || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Phone:</td><td style="padding: 6px 0; color: #2C1810;">${phone || 'N/A'}</td></tr>
+      </table>
+
+      <h3 style="margin-top: 16px; color: #6F4E37; font-size: 16px; border-top: 1px dashed #E8DED5; padding-top: 16px;">SUBSCRIPTION DETAILS</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Plan:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${planName || 'Fahara Partner'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Price:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">₹${price || 299}/month</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Current Status:</td><td style="padding: 6px 0;"><span style="background-color: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${status || 'ACTIVE'}</span></td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Cancellation:</td><td style="padding: 6px 0; color: #DC2626; font-weight: 700;">${cancelAtPeriodEnd ? 'Cancelled at period end' : 'Immediate cancellation'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Current Billing Period:</td><td style="padding: 6px 0; color: #2C1810;">${periodText}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Subscription End Date:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${endDateText}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Razorpay Subscription ID:</td><td style="padding: 6px 0; font-family: monospace; color: #6F4E37;">${razorpaySubscriptionId || 'N/A'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Cancellation Requested At:</td><td style="padding: 6px 0; color: #2C1810;">${cancelledAt ? new Date(cancelledAt).toLocaleString() : new Date().toLocaleString()}</td></tr>
+      </table>
+    </div>
+  `;
+
+  const summaryItems = [
+    { label: 'Business Type', value: typeTitle },
+    { label: 'Business Name', value: partnerName || 'N/A' },
+    { label: 'Subscription End Date', value: endDateText, isHighlight: true }
+  ];
+
+  return generateBaseTemplate({
+    title: 'Subscription Cancellation Notification',
+    bodyHtml,
+    summaryItems,
+    ctaLink: `${ADMIN_FRONTEND_URL}/admin/subscriptions`,
+    ctaText: 'Open Subscription Portal'
+  });
+};
+
+const getSubscriptionExpiredPartnerTemplate = (data) => {
+  const {
+    ownerName,
+    partnerName,
+    partnerType,
+    planName,
+    price,
+    expiredAt,
+    renewalUrl
+  } = data;
+
+  const roleTitle = partnerType === 'EVENT_MANAGER' ? 'Event Partner' : (partnerType === 'RESTAURANT' ? 'Restaurant Partner' : 'Cafe Partner');
+  const portalName = partnerType === 'EVENT_MANAGER' ? 'Event Manager' : (partnerType === 'RESTAURANT' ? 'Restaurant Owner' : 'Cafe Owner');
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hello ${ownerName || 'Partner'},</p>
+    
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Your <strong>Fahara ${roleTitle}</strong> subscription for <strong>${partnerName || 'your business'}</strong> has expired.
+    </p>
+
+    <div style="background-color: #FEE2E2; border: 1px solid #FCA5A5; color: #991B1B; padding: 14px 18px; border-radius: 12px; font-weight: 700; margin: 20px 0; font-size: 14px;">
+      🔒 Your ${portalName} portal management features are currently locked.
+    </div>
+
+    <div style="background: #FFF8F0; border: 1px solid #E8DED5; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #6F4E37; font-size: 16px;">Subscription Details</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Plan:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${planName || 'Fahara Partner'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Price:</td><td style="padding: 6px 0; color: #6F4E37; font-weight: 700;">₹${price || 299}/month</td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Status:</td><td style="padding: 6px 0;"><span style="background-color: #FEE2E2; color: #991B1B; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">EXPIRED</span></td></tr>
+        <tr><td style="padding: 6px 0; color: #7A6053; font-weight: 600;">Expired On:</td><td style="padding: 6px 0; color: #2C1810; font-weight: 700;">${expiredAt ? new Date(expiredAt).toLocaleDateString() : new Date().toLocaleDateString()}</td></tr>
+      </table>
+    </div>
+
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      To continue managing your business on Fahara, renew your subscription. After successful payment and Razorpay verification, your ${portalName} portal will be unlocked again.
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Plan', value: planName || 'Fahara Partner' },
+    { label: 'Fee', value: `₹${price || 299}/month` },
+    { label: 'Status', value: 'EXPIRED (Locked)', isHighlight: true }
+  ];
+
+  return generateBaseTemplate({
+    title: `Your Fahara ${roleTitle} Subscription Has Expired – Renew Now`,
+    bodyHtml,
+    summaryItems,
+    ctaLink: renewalUrl || `${FRONTEND_URL}/owner/subscription`,
+    ctaText: 'Renew Subscription'
+  });
+};
+
+const getPartnerSubscriptionPaymentSuccessTemplate = (data) => {
+  const {
+    partnerName,
+    businessName,
+    partnerType,
+    planName,
+    amountPaid,
+    paymentDate,
+    subscriptionStatus,
+    nextBillingDate,
+    paymentReference,
+    subscriptionReference,
+    dashboardUrl
+  } = data;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${partnerName || 'Partner'},</p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Thank you for subscribing to Fahara!
+    </p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Your subscription payment has been successfully processed. Here are your subscription details.
+    </p>
+
+    <div style="background: #FFF8F0; border: 1px solid #E8DED5; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #6F4E37; font-size: 16px; border-bottom: 2px solid #6F4E37; padding-bottom: 8px;">Subscription Details</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Partner Business:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${businessName || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Partner Type:</td><td style="padding: 7px 0; color: #6F4E37; font-weight: 700;">${partnerType || 'Cafe Owner'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Subscription Plan:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${planName || 'FAHARA PARTNER'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Amount Paid:</td><td style="padding: 7px 0; color: #059669; font-weight: 700;">₹${amountPaid}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Currency:</td><td style="padding: 7px 0; color: #2C1810;">INR</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Billing Cycle:</td><td style="padding: 7px 0; color: #2C1810;">Monthly</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Payment Date:</td><td style="padding: 7px 0; color: #2C1810;">${paymentDate || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Subscription Status:</td><td style="padding: 7px 0;"><span style="background-color: #ECFDF5; color: #065F46; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${subscriptionStatus || 'ACTIVE'}</span></td></tr>
+        ${nextBillingDate ? `<tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Next Billing Date:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${nextBillingDate}</td></tr>` : ''}
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Payment Reference:</td><td style="padding: 7px 0; font-family: monospace; color: #6F4E37;">${paymentReference || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Razorpay Subscription Reference:</td><td style="padding: 7px 0; font-family: monospace; color: #6F4E37;">${subscriptionReference || 'N/A'}</td></tr>
+      </table>
+    </div>
+
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Your Fahara partner subscription is now active. You can access your eligible partner tools according to your account verification and subscription status.
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Partner Business', value: businessName || 'N/A' },
+    { label: 'Subscription Plan', value: planName || 'FAHARA PARTNER' },
+    { label: 'Amount Paid', value: `₹${amountPaid}`, isHighlight: true }
+  ];
+
+  return {
+    html: generateBaseTemplate({
+      title: 'Payment Successful — Your Fahara Partner Subscription Is Active',
+      bodyHtml,
+      summaryItems,
+      ctaLink: dashboardUrl || `${CAFE_FRONTEND_URL}/owner/dashboard`,
+      ctaText: 'Open My Fahara Dashboard',
+      status: 'PAID'
+    }),
+    text: `Hi ${partnerName || 'Partner'},\n\nThank you for subscribing to Fahara!\n\nYour subscription payment has been successfully processed. Here are your subscription details.\n\nSubscription Details:\n- Partner Business: ${businessName || 'N/A'}\n- Partner Type: ${partnerType || 'Cafe Owner'}\n- Subscription Plan: ${planName || 'FAHARA PARTNER'}\n- Amount Paid: ₹${amountPaid}\n- Currency: INR\n- Billing Cycle: Monthly\n- Payment Date: ${paymentDate || 'N/A'}\n- Subscription Status: ${subscriptionStatus || 'ACTIVE'}${nextBillingDate ? `\n- Next Billing Date: ${nextBillingDate}` : ''}\n- Payment Reference: ${paymentReference || 'N/A'}\n- Razorpay Subscription Reference: ${subscriptionReference || 'N/A'}\n\nYour Fahara partner subscription is now active. You can access your eligible partner tools according to your account verification and subscription status.\n\nDashboard: ${dashboardUrl || `${CAFE_FRONTEND_URL}/owner/dashboard`}\n\nSupport: vexatech.connect@gmail.com\n© ${new Date().getFullYear()} Fahara Inc.`
+  };
+};
+
+const getPartnerSubscriptionCancellationTemplate = (data) => {
+  const {
+    partnerName,
+    businessName,
+    partnerType,
+    planName,
+    monthlyAmount,
+    cancellationDate,
+    accessEndDate,
+    subscriptionStatus,
+    cancellationMessage,
+    subscriptionPageUrl
+  } = data;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${partnerName || 'Partner'},</p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      We have received and confirmed the cancellation update for your Fahara partner subscription.
+    </p>
+
+    <div style="background: #FFF8F0; border: 1px solid #E8DED5; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #6F4E37; font-size: 16px; border-bottom: 2px solid #6F4E37; padding-bottom: 8px;">Subscription Details</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Business:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${businessName || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Partner Type:</td><td style="padding: 7px 0; color: #6F4E37; font-weight: 700;">${partnerType || 'Cafe Owner'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Plan:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${planName || 'FAHARA PARTNER'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Monthly Subscription Amount:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">₹${monthlyAmount}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Cancellation Requested On:</td><td style="padding: 7px 0; color: #2C1810;">${cancellationDate || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Access End Date:</td><td style="padding: 7px 0; color: #DC2626; font-weight: 700;">${accessEndDate || 'End of current period'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Subscription Status:</td><td style="padding: 7px 0;"><span style="background-color: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${subscriptionStatus || 'CANCELLED'}</span></td></tr>
+      </table>
+    </div>
+
+    ${cancellationMessage ? `
+    <div style="background-color: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; padding: 14px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; margin: 18px 0;">
+      ${cancellationMessage}
+    </div>
+    ` : ''}
+
+    <p style="font-size: 14px; color: #555555; line-height: 1.6;">
+      If your subscription is scheduled to end at the end of the current billing period, your eligible partner access will continue until <strong>${accessEndDate || 'the end of the billing period'}</strong>. If the subscription has been cancelled immediately, access will follow the verified cancellation and entitlement rules.
+    </p>
+
+    <p style="font-size: 14px; color: #555555; line-height: 1.6;">
+      Your account and business information will be preserved according to Fahara's existing retention policies.
+    </p>
+
+    <p style="font-size: 14px; color: #555555; line-height: 1.6;">
+      You can reactivate your subscription from your existing partner subscription page if reactivation is supported.
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Business', value: businessName || 'N/A' },
+    { label: 'Access End Date', value: accessEndDate || 'End of period', isHighlight: true }
+  ];
+
+  return {
+    html: generateBaseTemplate({
+      title: 'Your Fahara Partner Subscription Cancellation Update',
+      bodyHtml,
+      summaryItems,
+      ctaLink: subscriptionPageUrl || `${CAFE_FRONTEND_URL}/owner/subscription`,
+      ctaText: 'Manage My Subscription',
+      status: 'CANCELLED'
+    }),
+    text: `Hi ${partnerName || 'Partner'},\n\nWe have received and confirmed the cancellation update for your Fahara partner subscription.\n\nSubscription Details:\n- Business: ${businessName || 'N/A'}\n- Partner Type: ${partnerType || 'Cafe Owner'}\n- Plan: ${planName || 'FAHARA PARTNER'}\n- Monthly Subscription Amount: ₹${monthlyAmount}\n- Cancellation Requested On: ${cancellationDate || 'N/A'}\n- Access End Date: ${accessEndDate || 'End of current period'}\n- Subscription Status: ${subscriptionStatus || 'CANCELLED'}\n\n${cancellationMessage ? `${cancellationMessage}\n\n` : ''}If your subscription is scheduled to end at the end of the current billing period, your eligible partner access will continue until ${accessEndDate || 'the end of the period'}. If the subscription has been cancelled immediately, access will follow the verified cancellation and entitlement rules.\n\nYour account and business information will be preserved according to Fahara's existing retention policies.\n\nYou can reactivate your subscription from your existing partner subscription page if reactivation is supported.\n\nManage Subscription: ${subscriptionPageUrl || `${CAFE_FRONTEND_URL}/owner/subscription`}\n\nSupport: vexatech.connect@gmail.com\n© ${new Date().getFullYear()} Fahara Inc.`
+  };
+};
+
+const getPartnerSubscriptionExpiredTemplate = (data) => {
+  const {
+    partnerName,
+    businessName,
+    partnerType,
+    planName,
+    monthlyAmount,
+    expiryDate,
+    subscriptionStatus,
+    renewalUrl
+  } = data;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 600;">Hi ${partnerName || 'Partner'},</p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Your Fahara partner subscription has reached the end of its current billing period.
+    </p>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Your business profile and existing data are retained according to Fahara's existing policies, but subscription-protected features may no longer be available until your subscription is renewed.
+    </p>
+
+    <div style="background: #FFF8F0; border: 1px solid #E8DED5; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #6F4E37; font-size: 16px; border-bottom: 2px solid #6F4E37; padding-bottom: 8px;">Subscription Details</h3>
+      <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Business:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${businessName || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Partner Type:</td><td style="padding: 7px 0; color: #6F4E37; font-weight: 700;">${partnerType || 'Cafe Owner'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Previous Plan:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">${planName || 'FAHARA PARTNER'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Previous Monthly Amount:</td><td style="padding: 7px 0; color: #2C1810; font-weight: 700;">₹${monthlyAmount}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Subscription Expiry Date:</td><td style="padding: 7px 0; color: #DC2626; font-weight: 700;">${expiryDate || 'N/A'}</td></tr>
+        <tr><td style="padding: 7px 0; color: #7A6053; font-weight: 600;">Current Subscription Status:</td><td style="padding: 7px 0;"><span style="background-color: #FEE2E2; color: #991B1B; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${subscriptionStatus || 'EXPIRED'}</span></td></tr>
+      </table>
+    </div>
+
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      Renew your subscription to restore access to eligible Fahara partner tools.
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Business', value: businessName || 'N/A' },
+    { label: 'Previous Plan', value: planName || 'FAHARA PARTNER' },
+    { label: 'Subscription Expiry Date', value: expiryDate || 'Expired', isHighlight: true }
+  ];
+
+  return {
+    html: generateBaseTemplate({
+      title: 'Your Fahara Partner Subscription Has Expired — Renew Today',
+      bodyHtml,
+      summaryItems,
+      ctaLink: renewalUrl || `${CAFE_FRONTEND_URL}/owner/subscription`,
+      ctaText: 'Renew My Subscription',
+      status: 'CANCELLED'
+    }),
+    text: `Hi ${partnerName || 'Partner'},\n\nYour Fahara partner subscription has reached the end of its current billing period.\n\nYour business profile and existing data are retained according to Fahara's existing policies, but subscription-protected features may no longer be available until your subscription is renewed.\n\nSubscription Details:\n- Business: ${businessName || 'N/A'}\n- Partner Type: ${partnerType || 'Cafe Owner'}\n- Previous Plan: ${planName || 'FAHARA PARTNER'}\n- Previous Monthly Amount: ₹${monthlyAmount}\n- Subscription Expiry Date: ${expiryDate || 'N/A'}\n- Current Subscription Status: ${subscriptionStatus || 'EXPIRED'}\n\nRenew your subscription to restore access to eligible Fahara partner tools.\n\nRenew Subscription: ${renewalUrl || `${CAFE_FRONTEND_URL}/owner/subscription`}\n\nSupport: vexatech.connect@gmail.com\n© ${new Date().getFullYear()} Fahara Inc.`
+  };
+};
 
 module.exports = {
   getOtpTemplate,
@@ -752,7 +1127,13 @@ module.exports = {
   getEntityRejectedTemplate,
   getSettlementCompletedTemplate,
   getNewAccountNotificationTemplate,
-  getBirthdayPromotionalTemplate
+  getBirthdayPromotionalTemplate,
+  getNewSubscriptionAdminTemplate,
+  getSubscriptionCancelledAdminTemplate,
+  getSubscriptionExpiredPartnerTemplate,
+  getPartnerSubscriptionPaymentSuccessTemplate,
+  getPartnerSubscriptionCancellationTemplate,
+  getPartnerSubscriptionExpiredTemplate
 };
 
 

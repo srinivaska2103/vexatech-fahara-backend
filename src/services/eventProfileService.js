@@ -213,6 +213,33 @@ const getEventPaymentAccount = async (userId) => {
   };
 };
 
+const toggleServiceAvailability = async (userId, isActive) => {
+  let profile = await prisma.event_management_profiles.findUnique({
+    where: { user_id: userId }
+  });
+
+  if (!profile) {
+    const userRepository = require('../repositories/userRepository');
+    const user = await userRepository.findUserById(userId);
+    profile = await prisma.event_management_profiles.create({
+      data: {
+        user_id: userId,
+        company_name: user?.business_name || user?.name || 'Event Management Company',
+        is_active: isActive !== undefined ? Boolean(isActive) : true
+      }
+    });
+  } else {
+    profile = await prisma.event_management_profiles.update({
+      where: { user_id: userId },
+      data: {
+        is_active: isActive !== undefined ? Boolean(isActive) : !profile.is_active
+      }
+    });
+  }
+
+  return formatProfileResponse(profile);
+};
+
 const updateEventPaymentAccount = async (userId, bankPayload) => {
   let profile = await prisma.event_management_profiles.findUnique({
     where: { user_id: userId }
@@ -291,6 +318,7 @@ module.exports = {
   updateBusinessHours,
   updateEventProfileStatus,
   getEventPaymentAccount,
-  updateEventPaymentAccount
+  updateEventPaymentAccount,
+  toggleServiceAvailability
 };
 

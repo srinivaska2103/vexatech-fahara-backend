@@ -2,8 +2,9 @@ const express = require('express');
 const Joi = require('joi');
 const cafeController = require('../controllers/cafeController');
 const validateRequest = require('../middlewares/validateRequest');
-const { protect } = require('../middlewares/authMiddleware');
+const { protect, optionalAuth } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 const tableRoutes = require('./tableRoutes');
 
 const router = express.Router();
@@ -58,7 +59,7 @@ const packageSchema = Joi.object({
 }).unknown(true);
 
 // --- Base Cafe Routes ---
-router.get('/', cafeController.getCafes);
+router.get('/', optionalAuth, cafeController.getCafes);
 router.get('/categories', cafeController.getCategories);
 
 // --- Cafe Tables Routes ---
@@ -66,24 +67,30 @@ router.use('/:cafeId/tables', tableRoutes);
 
 // --- Cafe Packages Routes (defined before /:id to prevent route clashing) ---
 router.get('/packages/:packageId', cafeController.getPackageById);
-router.put('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePackage);
-router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.deletePackage);
+router.put('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, cafeController.updatePackage);
+router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, cafeController.deletePackage);
 
 // --- Cafe Routes ---
-router.get('/:id', cafeController.getCafeById);
-router.get('/:id/edit', cafeController.getCafeById);
+router.get('/:id/edit', optionalAuth, cafeController.getCafeById);
+router.get('/:id', optionalAuth, cafeController.getCafeById);
 router.post('/', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), validateRequest(cafeSchema), cafeController.createCafe);
-router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
-router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), validateRequest(cafeSchema), cafeController.updateCafe);
-router.put('/:id/business-hours', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updateBusinessHours);
-router.delete('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.deleteCafe);
+router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeSchema), cafeController.updateCafe);
+router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeSchema), cafeController.updateCafe);
+router.put('/:id/business-hours', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), requireActivePartnerSubscription, cafeController.updateBusinessHours);
+router.delete('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), requireActivePartnerSubscription, cafeController.deleteCafe);
 
 // --- Cafe Packages Routes ---
-router.post('/:cafeId/packages', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), validateRequest(packageSchema), cafeController.addPackage);
+router.post('/:cafeId/packages', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(packageSchema), cafeController.addPackage);
+
 
 // --- Payment Account & Bank Verification Routes ---
 router.get('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), cafeController.getPaymentAccount);
 router.patch('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePaymentAccount);
 router.put('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePaymentAccount);
+
+// --- Cafe Dynamic QR Routes ---
+const qrController = require('../controllers/qrController');
+router.get('/:cafeId/qr', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), qrController.getCafeQr);
+router.get('/:cafeId/qr/download', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), qrController.downloadCafeQr);
 
 module.exports = router;

@@ -4,6 +4,7 @@ const bookingController = require('../controllers/bookingController');
 const validateRequest = require('../middlewares/validateRequest');
 const { protect } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 
 const router = express.Router();
 
@@ -128,8 +129,9 @@ router.get('/my-bookings', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EV
  *       200:
  *         description: List of bookings
  */
-router.get('/cafe-bookings', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), bookingController.getCafeBookings);
-router.get('/calendar', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), bookingController.getCafeBookings);
+router.get('/cafe-bookings', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), requireActivePartnerSubscription, bookingController.getCafeBookings);
+router.get('/calendar', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER'), requireActivePartnerSubscription, bookingController.getCafeBookings);
+
 
 /**
  * @swagger
@@ -216,7 +218,27 @@ router.post('/:id/select-package', protect, bookingController.selectPackage);
  *       200:
  *         description: Status updated
  */
-router.patch('/:id/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), validateRequest(statusSchema), bookingController.updateBookingStatus);
+router.patch('/:id/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(statusSchema), bookingController.updateBookingStatus);
+router.post('/:id/status', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(statusSchema), bookingController.updateBookingStatus);
+
+// Convenient endpoints for Accept and Reject used by portals
+router.post('/:id/accept', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), requireActivePartnerSubscription, (req, res, next) => {
+  req.body = { status: 'CONFIRMED' };
+  bookingController.updateBookingStatus(req, res, next);
+});
+router.patch('/:id/accept', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), requireActivePartnerSubscription, (req, res, next) => {
+  req.body = { status: 'CONFIRMED' };
+  bookingController.updateBookingStatus(req, res, next);
+});
+router.post('/:id/reject', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), requireActivePartnerSubscription, (req, res, next) => {
+  req.body = { status: 'CANCELLED', reason: req.body?.reason };
+  bookingController.updateBookingStatus(req, res, next);
+});
+router.patch('/:id/reject', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'ADMIN'), requireActivePartnerSubscription, (req, res, next) => {
+  req.body = { status: 'CANCELLED', reason: req.body?.reason };
+  bookingController.updateBookingStatus(req, res, next);
+});
+
 
 /**
  * @swagger

@@ -3,8 +3,10 @@ const router = express.Router();
 const notificationController = require('../controllers/notificationController');
 const { protect } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 
 router.use(protect);
+router.use(requireActivePartnerSubscription);
 
 router.use((req, res, next) => {
   console.log(`[NotificationRoute] ${req.method} ${req.url}`);
