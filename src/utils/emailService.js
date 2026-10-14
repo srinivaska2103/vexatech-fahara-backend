@@ -46,12 +46,17 @@ const sendOtpEmail = async (email, otp) => {
     });
 };
 
-const sendEmail = async (to, subject, text, html, skipBcc = false) => {
+const sendEmail = async (to, subject, text, html, skipBcc = false, fromName = null) => {
   const adminEmail = getAdminEmail();
   const shouldBccAdmin = !skipBcc && adminEmail && adminEmail.toLowerCase() !== (to || '').toLowerCase();
 
+  const senderAddress = process.env.FROM_EMAIL || 'noreply@vexatech.in';
+  const formattedFrom = fromName 
+    ? `"${fromName.replace(/"/g, '')}" <${senderAddress}>`
+    : senderAddress;
+
   const mailOptions = {
-    from: process.env.FROM_EMAIL,
+    from: formattedFrom,
     to,
     bcc: shouldBccAdmin ? adminEmail : undefined,
     subject,

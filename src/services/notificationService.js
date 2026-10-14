@@ -529,16 +529,90 @@ const markAdminNotificationsAsRead = async () => {
 };
 
 const sendMessage = async (ownerId, data) => {
-  const { recipients, subject, message } = data;
+  const { recipients, subject, message, cafe_id } = data;
   
   if (!recipients || recipients.length === 0) {
     throw new Error('No recipients specified');
   }
 
-  // 1. Save broadcast record for the sender / cafe owner so it appears under their Sent Email Broadcasts tab
+  const prisma = require('../config/prisma');
+
+  // Fetch the sender user profile with role and event management profile
+  const senderUser = await prisma.users.findUnique({
+    where: { id: ownerId },
+    include: {
+      roles: true,
+      event_management_profiles: true,
+      cafes: {
+        orderBy: { created_at: 'desc' }
+      }
+    }
+  });
+
+  if (!senderUser) {
+    throw new Error('Sender user account not found.');
+  }
+
+  const userRole = (senderUser.roles?.name || '').toUpperCase();
+  const isEventManager = userRole === 'EVENT_MANAGER' || !!senderUser.event_management_profiles;
+
+  let senderType = 'CAFE'; // 'CAFE' or 'EVENT_MANAGER'
+  let resolvedSenderName = '';
+  let resolvedCity = '';
+  let resolvedAddress = '';
+
+  if (isEventManager) {
+    senderType = 'EVENT_MANAGER';
+    // Event Manager name resolution hierarchy:
+    // 1. event_management_profiles.company_name
+    // 2. senderUser.business_name
+    // 3. senderUser.name
+    // 4. Fallback 'Fahara Event Partner'
+    resolvedSenderName = 
+      senderUser.event_management_profiles?.company_name?.trim() || 
+      senderUser.business_name?.trim() || 
+      senderUser.name?.trim() || 
+      'Fahara Event Partner';
+    
+    resolvedCity = senderUser.event_management_profiles?.city || senderUser.city || '';
+    resolvedAddress = senderUser.event_management_profiles?.address_line1 || senderUser.address || '';
+  } else {
+    // Cafe / Restaurant Owner
+    let verifiedCafe = null;
+    if (cafe_id) {
+      verifiedCafe = senderUser.cafes.find(c => c.id === cafe_id);
+      if (!verifiedCafe) {
+        throw new Error('Unauthorized: You can only broadcast campaigns on behalf of cafes you own.');
+      }
+    } else {
+      verifiedCafe = senderUser.cafes[0] || null;
+    }
+
+    if (!verifiedCafe) {
+      throw new Error('No active cafe found for this account. Please register or verify your cafe venue before sending email campaigns.');
+    }
+
+    resolvedSenderName = verifiedCafe.name || 'Fahara Cafe';
+    resolvedCity = verifiedCafe.city || '';
+    resolvedAddress = verifiedCafe.address || '';
+  }
+
+  // Ensure subject clearly identifies the sender without duplicating the name if already present
+  let finalSubject = subject ? subject.trim() : '';
+  if (!finalSubject) {
+    finalSubject = isEventManager 
+      ? `Special Event Offers from ${resolvedSenderName}` 
+      : `Special Offers from ${resolvedSenderName}`;
+  } else if (!finalSubject.toLowerCase().includes(resolvedSenderName.toLowerCase())) {
+    finalSubject = isEventManager
+      ? `Special Event Offers from ${resolvedSenderName} - ${finalSubject}`
+      : `Special Offers from ${resolvedSenderName} - ${finalSubject}`;
+  }
+
+  // 2. Save broadcast record for the sender
   await notificationRepository.saveNotification({
     user_id: ownerId,
-    title: subject,
+    title: finalSubject,
     message: message,
     notification_type: 'CUSTOM_MESSAGE',
     channel: 'EMAIL',
@@ -546,16 +620,14 @@ const sendMessage = async (ownerId, data) => {
     sent_at: new Date(),
   });
 
-  // 2. Resolve target recipient users
+  // 3. Resolve target recipient users
   let users = [];
   if (recipients.includes('all-diners') || recipients.includes('all')) {
-    const prisma = require('../config/prisma');
     users = await prisma.users.findMany({});
   } else {
     const validUuids = recipients.filter(r => typeof r === 'string' && r.length === 36 && r.includes('-'));
     const emails = recipients.filter(r => typeof r === 'string' && r.includes('@'));
     
-    const prisma = require('../config/prisma');
     users = await prisma.users.findMany({
       where: {
         OR: [
@@ -566,20 +638,46 @@ const sendMessage = async (ownerId, data) => {
     });
   }
 
-  // 3. Send email to each recipient
+  const emailTemplates = require('../utils/emailTemplates');
+
+  // 4. Send email to each recipient with sender name prominently displayed
   for (const user of users) {
     try {
+      const formattedHtml = isEventManager
+        ? emailTemplates.getEventManagerBroadcastTemplate({
+            dinerName: user.name || 'Valued Customer',
+            managerName: resolvedSenderName,
+            subject: finalSubject,
+            message: message,
+            city: resolvedCity,
+            address: resolvedAddress
+          })
+        : emailTemplates.getCafeBroadcastTemplate({
+            dinerName: user.name || 'Valued Diner',
+            cafeName: resolvedSenderName,
+            subject: finalSubject,
+            message: message,
+            cafeCity: resolvedCity,
+            cafeAddress: resolvedAddress
+          });
+
+      const plainTextContent = isEventManager
+        ? `Hi ${user.name || 'Customer'},\n\nGreetings from ${resolvedSenderName}!\n\n${message}\n\nDiscover our event services, celebration packages and special offers through Fahara.\n\nWarm regards,\n${resolvedSenderName} Team\nPowered by Fahara`
+        : `Hi ${user.name || 'Valued Diner'},\n\nGreetings from ${resolvedSenderName}!\n\n${message}\n\nDiscover our latest offers and enjoy your next visit with us.\n\nWarm regards,\n${resolvedSenderName} Team\nPowered by Fahara`;
+
       await emailService.sendEmail(
         user.email,
-        subject,
-        message,
-        `<p>Hi ${user.name || 'Valued Diner'},</p><p>${message}</p>`
+        finalSubject,
+        plainTextContent,
+        formattedHtml,
+        false,
+        `${resolvedSenderName} via Fahara` // Sets sender name as "Saritha Events via Fahara <noreply@vexatech.in>"
       );
       
       if (user.id !== ownerId) {
         await notificationRepository.saveNotification({
           user_id: user.id,
-          title: subject,
+          title: finalSubject,
           message: message,
           notification_type: 'CUSTOM_MESSAGE',
           channel: 'EMAIL',
@@ -592,7 +690,12 @@ const sendMessage = async (ownerId, data) => {
     }
   }
 
-  return { success: true, message: 'Message sent successfully to all recipients.' };
+  return { 
+    success: true, 
+    senderType,
+    senderName: resolvedSenderName,
+    message: `Message sent successfully from ${resolvedSenderName} to all recipients.` 
+  };
 };
 
 const broadcastAdminMessage = async (adminId, data) => {

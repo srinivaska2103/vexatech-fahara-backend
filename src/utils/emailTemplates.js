@@ -1108,6 +1108,135 @@ const getPartnerSubscriptionExpiredTemplate = (data) => {
   };
 };
 
+const getCafeBroadcastTemplate = ({ dinerName, cafeName, subject, message, cafeCity, cafeAddress }) => {
+  // Clean message and support {{customerName}} placeholder substitution if provided in message text
+  let safeMessage = message || '';
+  safeMessage = safeMessage.replace(/\{\{\s*customerName\s*\}\}/gi, dinerName || 'Customer');
+  safeMessage = safeMessage.replace(/\{\{\s*customer_name\s*\}\}/gi, dinerName || 'Customer');
+  safeMessage = safeMessage.replace(/\{\{\s*cafeName\s*\}\}/gi, cafeName || 'Fahara Partner Cafe');
+  safeMessage = safeMessage.replace(/\{\{\s*cafe_name\s*\}\}/gi, cafeName || 'Fahara Partner Cafe');
+  safeMessage = safeMessage.replace(/\{\{\s*campaignMessage\s*\}\}/gi, '');
+  safeMessage = safeMessage.replace(/\n/g, '<br/>');
+
+  const greetingName = dinerName || 'Customer';
+
+  const bodyHtml = `
+    <!-- Prominent Cafe Banner at the top -->
+    <div style="background-color: #FFF8F0; border: 1px solid #E8DED5; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+        <tr>
+          <td style="width: 48px; vertical-align: middle;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #6F4E37 0%, #4A2C11 100%); color: #ffffff; text-align: center; line-height: 44px; font-size: 22px;">
+              ☕
+            </div>
+          </td>
+          <td style="padding-left: 14px; vertical-align: middle;">
+            <span style="font-size: 11px; font-weight: 800; color: #8C6D58; text-transform: uppercase; letter-spacing: 1.2px; display: block;">Message From Venue</span>
+            <span style="font-size: 20px; font-weight: 900; color: #2C1810; display: block; font-family: 'Georgia', serif; line-height: 1.2; margin-top: 2px;">${cafeName}</span>
+            ${cafeCity ? `<span style="font-size: 12px; font-weight: 600; color: #6F4E37; display: block; margin-top: 3px;">📍 ${cafeCity}${cafeAddress ? ` • ${cafeAddress}` : ''}</span>` : ''}
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Greeting with customer name and greeting from cafe -->
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 700;">
+      Hi ${greetingName},
+    </p>
+
+    <p style="font-size: 15px; color: #2C1810; margin: 12px 0 18px 0; font-weight: 600;">
+      Greetings from <strong style="color: #6F4E37;">${cafeName}</strong>!
+    </p>
+
+    <!-- Campaign Content entered by the cafe owner -->
+    <div style="background-color: #FAF6F0; border-left: 4px solid #6F4E37; padding: 20px 22px; margin: 20px 0; border-radius: 0 14px 14px 0; font-size: 15px; color: #3A2312; line-height: 1.7; font-weight: 500;">
+      ${safeMessage}
+    </div>
+
+    <p style="font-size: 14px; color: #555555; line-height: 1.6; margin: 20px 0 24px 0;">
+      Discover our latest offers and enjoy your next visit with us.
+    </p>
+
+    <!-- Warm regards footer block -->
+    <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #E8DED5;">
+      <p style="font-size: 14px; color: #6F4E37; margin: 0 0 4px 0; font-weight: 600;">Warm regards,</p>
+      <p style="font-size: 16px; color: #2C1810; margin: 0 0 2px 0; font-weight: 900;">${cafeName} Team</p>
+      <p style="font-size: 12px; color: #A67B5B; margin: 0; font-weight: 700; letter-spacing: 0.5px;">Powered by Fahara</p>
+    </div>
+  `;
+
+  return generateBaseTemplate({
+    title: subject || `Special Offers from ${cafeName}`,
+    bodyHtml,
+    ctaLink: `${FRONTEND_URL}/customer/cafe`,
+    ctaText: `Discover ${cafeName} on Fahara`
+  });
+};
+
+const getEventManagerBroadcastTemplate = ({ dinerName, managerName, subject, message, city, address }) => {
+  let safeMessage = message || '';
+  safeMessage = safeMessage.replace(/\{\{\s*customerName\s*\}\}/gi, dinerName || 'Customer');
+  safeMessage = safeMessage.replace(/\{\{\s*customer_name\s*\}\}/gi, dinerName || 'Customer');
+  safeMessage = safeMessage.replace(/\{\{\s*managerName\s*\}\}/gi, managerName || 'Event Manager');
+  safeMessage = safeMessage.replace(/\{\{\s*manager_name\s*\}\}/gi, managerName || 'Event Manager');
+  safeMessage = safeMessage.replace(/\{\{\s*campaignMessage\s*\}\}/gi, '');
+  safeMessage = safeMessage.replace(/\n/g, '<br/>');
+
+  const greetingName = dinerName || 'Customer';
+
+  const bodyHtml = `
+    <!-- Prominent Event Manager Banner at the top -->
+    <div style="background-color: #FFF8F0; border: 1px solid #E8DED5; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+        <tr>
+          <td style="width: 48px; vertical-align: middle;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #6F4E37 0%, #4A2C11 100%); color: #ffffff; text-align: center; line-height: 44px; font-size: 22px;">
+              ✨
+            </div>
+          </td>
+          <td style="padding-left: 14px; vertical-align: middle;">
+            <span style="font-size: 11px; font-weight: 800; color: #8C6D58; text-transform: uppercase; letter-spacing: 1.2px; display: block;">Message From Event Partner</span>
+            <span style="font-size: 20px; font-weight: 900; color: #2C1810; display: block; font-family: 'Georgia', serif; line-height: 1.2; margin-top: 2px;">${managerName}</span>
+            ${city ? `<span style="font-size: 12px; font-weight: 600; color: #6F4E37; display: block; margin-top: 3px;">📍 ${city}${address ? ` • ${address}` : ''}</span>` : ''}
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Greeting with customer name and greeting from Event Manager -->
+    <p style="font-size: 16px; color: #2C1810; margin-top: 0; font-weight: 700;">
+      Hi ${greetingName},
+    </p>
+
+    <p style="font-size: 15px; color: #2C1810; margin: 12px 0 18px 0; font-weight: 600;">
+      Greetings from <strong style="color: #6F4E37;">${managerName}</strong>!
+    </p>
+
+    <!-- Campaign Content entered by the Event Manager -->
+    <div style="background-color: #FAF6F0; border-left: 4px solid #6F4E37; padding: 20px 22px; margin: 20px 0; border-radius: 0 14px 14px 0; font-size: 15px; color: #3A2312; line-height: 1.7; font-weight: 500;">
+      ${safeMessage}
+    </div>
+
+    <p style="font-size: 14px; color: #555555; line-height: 1.6; margin: 20px 0 24px 0;">
+      Discover our event services, celebration packages and special offers through Fahara.
+    </p>
+
+    <!-- Warm regards footer block -->
+    <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #E8DED5;">
+      <p style="font-size: 14px; color: #6F4E37; margin: 0 0 4px 0; font-weight: 600;">Warm regards,</p>
+      <p style="font-size: 16px; color: #2C1810; margin: 0 0 2px 0; font-weight: 900;">${managerName} Team</p>
+      <p style="font-size: 12px; color: #A67B5B; margin: 0; font-weight: 700; letter-spacing: 0.5px;">Powered by Fahara</p>
+    </div>
+  `;
+
+  return generateBaseTemplate({
+    title: subject || `Special Event Offers from ${managerName}`,
+    bodyHtml,
+    ctaLink: `${FRONTEND_URL}/customer/events`,
+    ctaText: `Explore ${managerName} on Fahara`
+  });
+};
+
 module.exports = {
   getOtpTemplate,
   getResetPasswordTemplate,
@@ -1133,7 +1262,9 @@ module.exports = {
   getSubscriptionExpiredPartnerTemplate,
   getPartnerSubscriptionPaymentSuccessTemplate,
   getPartnerSubscriptionCancellationTemplate,
-  getPartnerSubscriptionExpiredTemplate
+  getPartnerSubscriptionExpiredTemplate,
+  getCafeBroadcastTemplate,
+  getEventManagerBroadcastTemplate
 };
 
 
