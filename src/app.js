@@ -60,6 +60,29 @@ setupSwagger(app);
 const webhookController = require('./controllers/webhookController');
 app.post('/api/webhooks/razorpay', webhookController.handleRazorpayWebhook);
 app.post('/api/webhooks/cashfree', webhookController.handleWebhook);
+// Redirect browser hits (accepts HTML) on frontend paths to their respective Next.js portals
+app.use((req, res, next) => {
+  const acceptsHtml = req.headers.accept && req.headers.accept.includes('text/html');
+  if (acceptsHtml && req.method === 'GET') {
+    if (req.path.startsWith('/customer/cafe') || req.path === '/customer') {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+      return res.redirect(`${frontendUrl}${req.originalUrl}`);
+    }
+    if (req.path.startsWith('/owner')) {
+      const cafeFrontendUrl = process.env.CAFE_FRONTEND_URL || 'http://localhost:3002';
+      return res.redirect(`${cafeFrontendUrl}${req.originalUrl}`);
+    }
+    if (req.path.startsWith('/admin')) {
+      const adminFrontendUrl = process.env.ADMIN_FRONTEND_URL || 'http://localhost:3003';
+      return res.redirect(`${adminFrontendUrl}${req.originalUrl}`);
+    }
+    if (req.path.startsWith('/event')) {
+      const emFrontendUrl = process.env.EM_FRONTEND_URL || 'http://localhost:3004';
+      return res.redirect(`${emFrontendUrl}${req.originalUrl}`);
+    }
+  }
+  next();
+});
 
 // Routes
 app.use('/api/v1/auth', authRoutes);
@@ -70,7 +93,6 @@ const cafeController = require('./controllers/cafeController');
 app.get('/api/v1/categories', cafeController.getCategories);
 app.use('/api/v1/cafes', cafeRoutes);
 app.use('/api/v1/owner/cafes', cafeRoutes);
-app.use('/owner/cafes', cafeRoutes);
 app.use('/cafes', cafeRoutes);
 app.use('/api/v1/event-profiles', eventProfileRoutes);
 app.use('/api/v1/event-services', eventServiceRoutes);
@@ -87,7 +109,6 @@ app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/owner/dashboard', dashboardRoutes);
-app.use('/owner/dashboard', dashboardRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/activities', require('./routes/activityRoutes'));
 app.use('/api/v1/analytics', analyticsRoutes);
@@ -108,11 +129,7 @@ app.get('/', (req, res) => {
   res.send('Welcome to Fahara Backend API');
 });
 
-// Redirect /customer/cafe browser hits to Next.js User App
-app.use('/customer/cafe', (req, res) => {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-  res.redirect(`${frontendUrl}${req.originalUrl}`);
-});
+
 
 // 404 Route Not Found Handler
 app.use((req, res, next) => {
