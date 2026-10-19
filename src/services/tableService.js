@@ -331,13 +331,57 @@ const getRealtimeTableAvailability = async (cafeId, bookingDate, startTime, endT
   const sTime = new Date(`1970-01-01T${startTime}Z`);
   const eTime = new Date(`1970-01-01T${endTime}Z`);
 
+  // Check if cafe has an active vendor availability block during this slot
+  const availabilityRepository = require('../repositories/availabilityRepository');
+  
+  // Helper to normalize time to [hours24, minutes]
+  const parseTimeTo24 = (timeStr) => {
+    if (!timeStr) return [12, 0];
+    const str = String(timeStr).trim();
+    if (str.includes(' ')) {
+      const [t, modifier] = str.split(' ');
+      let [h, m] = t.split(':').map(Number);
+      if (modifier?.toUpperCase() === 'PM' && h < 12) h += 12;
+      if (modifier?.toUpperCase() === 'AM' && h === 12) h = 0;
+      return [h || 0, m || 0];
+    }
+    const [h, m] = str.split(':').map(Number);
+    return [h || 0, m || 0];
+  };
+
+  let bYear, bMonth, bDay;
+  if (typeof bookingDate === 'string' && bookingDate.includes('-')) {
+    [bYear, bMonth, bDay] = bookingDate.split('-');
+  } else {
+    const parsedBDate = new Date(bookingDate);
+    if (!isNaN(parsedBDate.getTime())) {
+      [bYear, bMonth, bDay] = parsedBDate.toISOString().split('T')[0].split('-');
+    } else {
+      [bYear, bMonth, bDay] = new Date().toISOString().split('T')[0].split('-');
+    }
+  }
+
+  const [sHour, sMin] = parseTimeTo24(startTime);
+  const [eHour, eMin] = parseTimeTo24(endTime);
+
+  const slotStart = new Date(Date.UTC(parseInt(bYear, 10), parseInt(bMonth, 10) - 1, parseInt(bDay, 10), sHour, sMin, 0));
+  const slotEnd = new Date(Date.UTC(parseInt(bYear, 10), parseInt(bMonth, 10) - 1, parseInt(bDay, 10), eHour, eMin, 0));
+
+  let activeBlock = null;
+  if (!isNaN(slotStart.getTime()) && !isNaN(slotEnd.getTime())) {
+    activeBlock = await availabilityRepository.checkOverlap(cafeId, slotStart, slotEnd);
+  }
+
   const tables = await tableRepository.getTablesByCafe(cafeId);
 
   const availabilityResults = await Promise.all(tables.map(async (table) => {
     let isAvailable = false;
     let availabilityStatus = table.status; // 'ACTIVE', 'INACTIVE', 'MAINTENANCE'
 
-    if (table.status === 'ACTIVE') {
+    if (activeBlock) {
+      isAvailable = false;
+      availabilityStatus = 'BLOCKED';
+    } else if (table.status === 'ACTIVE') {
       const isFree = await tableRepository.checkTablesAvailability(cafeId, [table.id], bDate, sTime, eTime);
       isAvailable = isFree;
       availabilityStatus = isFree ? 'AVAILABLE' : 'RESERVED';
@@ -354,7 +398,8 @@ const getRealtimeTableAvailability = async (cafeId, bookingDate, startTime, endT
       location: table.location,
       status: table.status,
       availability_status: availabilityStatus,
-      is_available: isAvailable
+      is_available: isAvailable,
+      blocked_reason: activeBlock ? activeBlock.reason : null
     };
   }));
 

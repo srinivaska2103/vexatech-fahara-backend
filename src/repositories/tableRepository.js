@@ -257,6 +257,7 @@ const assignTablesToBooking = async (bookingId, tableIds = []) => {
 module.exports = {
   getTablesByCafe,
   getTableById,
+  findTableById: getTableById,
   getTableByNumber,
   createTable,
   updateTable,

@@ -146,6 +146,8 @@ model cafes {
   reviews                 reviews[]
   cafe_tables             cafe_tables[]
   cafe_analytics_events   cafe_analytics_events[]
+  cafe_availability_blocks cafe_availability_blocks[]
+  event_availability_blocks event_availability_blocks[]
 
   @@index([city], map: "idx_cafes_city")
   @@index([owner_id], map: "idx_cafes_owner")
@@ -190,6 +192,7 @@ model event_services {
   reviews                  reviews[]
   bookings                 bookings[]
   event_service_inclusions event_service_inclusions[]
+  event_availability_blocks event_availability_blocks[]
 
   @@index([category], map: "idx_event_services_category")
   @@index([status], map: "idx_event_services_status")
@@ -403,6 +406,7 @@ model users {
   event_business_hours      event_business_hours[]
   event_management_profiles event_management_profiles?
   event_services            event_services[]
+  event_availability_blocks event_availability_blocks[]
   audit_logs                audit_logs[]        @relation("audit_logs_admin")
   security_sessions         security_sessions[] @relation("security_sessions_user")
   login_history             login_history[]     @relation("login_history_user")
@@ -807,4 +811,50 @@ model partner_subscriptions {
   @@index([business_type], map: "idx_partner_sub_business_type")
 }
 
+model cafe_availability_blocks {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id     String   @db.Uuid
+  title       String   @db.VarChar(255)
+  reason      String   @default("OTHER") @db.VarChar(50) // HOLIDAY, PRIVATE_EVENT, MAINTENANCE, PERSONAL_CLOSURE, OTHER
+  start_at    DateTime @db.Timestamp(6)
+  end_at      DateTime @db.Timestamp(6)
+  is_all_day  Boolean  @default(false)
+  notes       String?
+  recurrence  String?  @default("NONE") @db.VarChar(30) // NONE, DAILY, WEEKLY
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at  DateTime @default(now()) @db.Timestamp(6)
 
+  cafes       cafes    @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([cafe_id, start_at, end_at], map: "idx_cafe_avail_blocks_times")
+  @@index([cafe_id, is_active], map: "idx_cafe_avail_blocks_active")
+}
+
+model event_availability_blocks {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_manager_id      String          @db.Uuid
+  service_id            String?         @db.Uuid
+  venue_id              String?         @db.Uuid
+  title                 String          @db.VarChar(255)
+  reason                String          @default("UNAVAILABLE") @db.VarChar(50) // PRIVATE_EVENT, PERSONAL_BOOKING, HOLIDAY, MAINTENANCE, UNAVAILABLE, EQUIPMENT_SETUP, OTHER
+  start_at              DateTime        @db.Timestamp(6)
+  end_at                DateTime        @db.Timestamp(6)
+  is_all_day            Boolean         @default(false)
+  notes                 String?
+  recurrence            String?         @default("NONE") @db.VarChar(30) // NONE, DAILY, WEEKLY
+  buffer_minutes        Int             @default(0)
+  max_concurrent_events Int             @default(1)
+  is_active             Boolean         @default(true)
+  created_at            DateTime        @default(now()) @db.Timestamp(6)
+  updated_at            DateTime        @default(now()) @db.Timestamp(6)
+
+  users                 users           @relation(fields: [event_manager_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  event_services        event_services? @relation(fields: [service_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  cafes                 cafes?          @relation(fields: [venue_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([event_manager_id, start_at, end_at], map: "idx_event_avail_blocks_times")
+  @@index([event_manager_id, is_active], map: "idx_event_avail_blocks_active")
+  @@index([service_id], map: "idx_event_avail_blocks_service")
+  @@index([venue_id], map: "idx_event_avail_blocks_venue")
+}

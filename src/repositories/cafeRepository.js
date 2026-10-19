@@ -398,7 +398,12 @@ const findCafeById = async (id) => {
       users: { select: userSelect },
       cafe_packages: true,
       cafe_business_hours: true,
-      reviews: true,
+      reviews: {
+        include: {
+          users: { select: { name: true, profile_image: true } }
+        },
+        orderBy: { created_at: 'desc' }
+      },
     },
   });
 
@@ -409,7 +414,12 @@ const findCafeById = async (id) => {
         users: { select: userSelect },
         cafe_packages: true,
         cafe_business_hours: true,
-        reviews: true,
+        reviews: {
+          include: {
+            users: { select: { name: true, profile_image: true } }
+          },
+          orderBy: { created_at: 'desc' }
+        },
       },
     });
   }

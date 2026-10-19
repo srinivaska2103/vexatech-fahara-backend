@@ -67,8 +67,54 @@ const createBooking = async (userId, data) => {
     throw error;
   }
 
+  // 1b-1. Authoritative Package Duration Resolution
+  // If an Event Manager package (event_service_id) or Cafe Owner package (package_id) is selected,
+  // automatically calculate the authoritative duration and end_time from the package record.
+  let authoritativeHours = hours ? Number(hours) : 1;
+  let authoritativeEndTime = end_time;
+
+  let initialPkg = null;
+  if (package_id && cafe.cafe_packages) {
+    initialPkg = cafe.cafe_packages.find(p => String(p.id) === String(package_id));
+  }
+  if (!initialPkg && (event_service_id || package_id)) {
+    const targetLookupId = event_service_id || package_id;
+    const eventServiceRepo = require('../repositories/eventServiceRepository');
+    const ext = await eventServiceRepo.findEventServiceById(targetLookupId);
+    if (ext) {
+      initialPkg = ext;
+    }
+  }
+
+  if (initialPkg) {
+    const configuredDuration = Number(initialPkg.duration_hours || initialPkg.durationHours || 0);
+    if (configuredDuration > 0) {
+      authoritativeHours = configuredDuration;
+      
+      // Calculate end_time = start_time + authoritativeHours
+      const [sH, sM, sS] = String(start_time).split(':').map(Number);
+      const startTotalMinutes = sH * 60 + (sM || 0);
+      const endTotalMinutes = startTotalMinutes + (configuredDuration * 60);
+      
+      const calcEndHour = Math.floor(endTotalMinutes / 60) % 24;
+      const calcEndMin = Math.floor(endTotalMinutes % 60);
+      authoritativeEndTime = `${String(calcEndHour).padStart(2, '0')}:${String(calcEndMin).padStart(2, '0')}:${String(sS || 0).padStart(2, '0')}`;
+      console.log(`[BOOKING DURATION] Automatically calculated authoritative end time ${authoritativeEndTime} based on package duration of ${configuredDuration} hours`);
+    }
+  }
+
+  if (!authoritativeEndTime) {
+    // Default fallback to 1 hour if neither package duration nor client end_time provided
+    const [sH, sM, sS] = String(start_time).split(':').map(Number);
+    const calcEndHour = (sH + authoritativeHours) % 24;
+    authoritativeEndTime = `${String(calcEndHour).padStart(2, '0')}:${String(sM || 0).padStart(2, '0')}:${String(sS || 0).padStart(2, '0')}`;
+  }
+
+  const effectiveEndTime = authoritativeEndTime;
+  const effectiveHours = authoritativeHours;
+
   // 1b-2. Check if selected booking time is within Cafe operating hours
-  const cafeBusinessHoursErr = bookingUtils.checkBookingTimeBusinessHours(cafe, booking_date, start_time, end_time, 'Cafe');
+  const cafeBusinessHoursErr = bookingUtils.checkBookingTimeBusinessHours(cafe, booking_date, start_time, effectiveEndTime, 'Cafe');
 
   // 1c. Enforce 24-hour advance booking policy
   if (bookingUtils.isBookingWithin24Hours(booking_date, start_time)) {
@@ -78,21 +124,61 @@ const createBooking = async (userId, data) => {
   }
 
   // format date and times
-  const bDate = new Date(booking_date);
-  // Assuming start_time and end_time are provided as HH:mm:ss strings, convert them for Prisma
-  const sTime = new Date(`1970-01-01T${start_time}Z`);
-  const eTime = new Date(`1970-01-01T${end_time}Z`);
+  const dateStr = typeof booking_date === 'string' ? booking_date.split('T')[0] : new Date(booking_date).toISOString().split('T')[0];
+  const bDate = new Date(dateStr);
 
-  // 2. Check Availability
-  const isAvailable = await bookingRepository.checkAvailability(cafe_id, bDate, sTime, eTime);
-  if (!isAvailable) {
-    const error = new Error('The selected time slot is not available');
+  const cleanTimeStr = (t) => {
+    if (!t) return '12:00:00';
+    let s = String(t).trim();
+    if (s.includes(' ')) {
+      const [val, mod] = s.split(' ');
+      let [h, m] = val.split(':').map(Number);
+      if (mod?.toUpperCase() === 'PM' && h < 12) h += 12;
+      if (mod?.toUpperCase() === 'AM' && h === 12) h = 0;
+      return `${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}:00`;
+    }
+    const parts = s.split(':');
+    const h = String(parts[0] || '12').padStart(2, '0');
+    const m = String(parts[1] || '00').padStart(2, '0');
+    const sec = String(parts[2] || '00').padStart(2, '0');
+    return `${h}:${m}:${sec}`;
+  };
+
+  const cleanStartTime = cleanTimeStr(start_time);
+  const cleanEndTime = cleanTimeStr(effectiveEndTime);
+
+  // Assuming start_time and end_time are provided as HH:mm:ss strings, convert them for Prisma
+  const sTime = new Date(`1970-01-01T${cleanStartTime}Z`);
+  const eTime = new Date(`1970-01-01T${cleanEndTime}Z`);
+
+  // 2. Check Availability and Vendor Availability Blocks
+  const availRepo = require('../repositories/availabilityRepository');
+  const reqStartDt = new Date(`${dateStr}T${cleanStartTime}`);
+  const reqEndDt = new Date(`${dateStr}T${cleanEndTime}`);
+  const overlappingBlock = await availRepo.checkOverlap(cafe_id, reqStartDt, reqEndDt);
+  if (overlappingBlock) {
+    const reasonMsg = overlappingBlock.reason === 'HOLIDAY' ? 'the cafe is closed for a holiday' :
+                      overlappingBlock.reason === 'PRIVATE_EVENT' ? 'a private event is scheduled' :
+                      overlappingBlock.reason === 'MAINTENANCE' ? 'the cafe is undergoing maintenance' :
+                      'the cafe is temporarily unavailable';
+    const error = new Error(`The selected time slot is unavailable because ${reasonMsg}. Please choose another time.`);
     error.statusCode = 409;
+    error.code = 'SLOT_BLOCKED';
+    error.blockReason = overlappingBlock.reason;
+    throw error;
+  }
+
+  const potentialEventServiceId = event_service_id || package_id;
+  const isAvailable = await bookingRepository.checkAvailability(cafe_id, bDate, sTime, eTime, potentialEventServiceId);
+  if (!isAvailable) {
+    const error = new Error('The selected time slot is not available as another booking was confirmed or the slot is blocked.');
+    error.statusCode = 409;
+    error.code = 'SLOT_BOOKED';
     throw error;
   }
 
   // 2b. Check Table Allocation if cafe has configured active tables
-  const tableAllocation = await tableService.findSuitableTablesForBooking(cafe_id, total_persons, booking_date, start_time, end_time);
+  const tableAllocation = await tableService.findSuitableTablesForBooking(cafe_id, total_persons, booking_date, start_time, effectiveEndTime);
   const cafeTables = await tableRepository.getTablesByCafe(cafe_id);
   const activeTablesCount = cafeTables.filter(t => t.status === 'ACTIVE').length;
 
@@ -103,7 +189,7 @@ const createBooking = async (userId, data) => {
   }
 
   // 3. Pricing Calculation
-  let base_cafe_charge = (cafe.provides_event_services === true) ? 0 : (Number(cafe.price_per_hour || 0) * hours);
+  let base_cafe_charge = (cafe.provides_event_services === true) ? 0 : (Number(cafe.price_per_hour || 0) * effectiveHours);
   let package_add_on_charge = 0;
   let event_service_amount = 0;
   let actual_package_id = package_id;
@@ -192,12 +278,129 @@ const createBooking = async (userId, data) => {
     }
   }
 
+  // 1d. Validate Event Manager Availability Blocks, Buffer times, and Capacity
+  if (eventServiceEntity && eventServiceEntity.user_id) {
+    const eventManagerId = eventServiceEntity.user_id;
+    const eventAvailRepo = require('../repositories/eventAvailabilityRepository');
+    
+    // Check if the event manager profile is active
+    const prisma = require('../config/prisma');
+    const emProfile = await prisma.event_management_profiles.findFirst({
+      where: { user_id: eventManagerId }
+    });
+    if (emProfile && emProfile.is_active === false) {
+      const error = new Error('The selected event manager is currently not accepting new bookings.');
+      error.statusCode = 403;
+      error.code = 'EVENT_MANAGER_INACTIVE';
+      throw error;
+    }
+
+    // Check Event Manager Availability Blocks overlapping requested interval
+    const emBlock = await eventAvailRepo.checkOverlap(eventManagerId, reqStartDt, reqEndDt, null, eventServiceEntity.id);
+    if (emBlock) {
+      const reasonMsg = emBlock.reason === 'HOLIDAY' ? 'the event manager is on holiday' :
+                        emBlock.reason === 'PRIVATE_EVENT' ? 'a private event is reserved' :
+                        emBlock.reason === 'PERSONAL_BOOKING' ? 'a personal event is booked' :
+                        emBlock.reason === 'EQUIPMENT_SETUP' ? 'equipment setup is scheduled' :
+                        emBlock.reason === 'MAINTENANCE' ? 'equipment maintenance is ongoing' :
+                        'the event manager has blocked this time slot';
+      const error = new Error(`The selected time slot is unavailable because ${reasonMsg}. Please choose another time.`);
+      error.statusCode = 409;
+      error.code = 'EVENT_MANAGER_SLOT_BLOCKED';
+      error.blockReason = emBlock.reason;
+      throw error;
+    }
+
+    // Check buffer minutes configured in any active blocks or default preparation/cleanup buffers
+    const nearbyBlocks = await prisma.event_availability_blocks.findMany({
+      where: {
+        event_manager_id: eventManagerId,
+        is_active: true,
+        buffer_minutes: { gt: 0 }
+      }
+    });
+
+    for (const nb of nearbyBlocks) {
+      const bufMs = (nb.buffer_minutes || 0) * 60 * 1000;
+      const effectiveStart = new Date(new Date(nb.start_at).getTime() - bufMs);
+      const effectiveEnd = new Date(new Date(nb.end_at).getTime() + bufMs);
+      if (reqStartDt < effectiveEnd && reqEndDt > effectiveStart) {
+        const error = new Error(`The selected time slot conflicts with required buffer preparation/cleanup time for an existing event. Please select another time.`);
+        error.statusCode = 409;
+        error.code = 'BUFFER_CONFLICT';
+        throw error;
+      }
+    }
+
+    // Check existing confirmed/pending bookings for this event manager with concurrency capacity
+    const overlappingEmBookings = await eventAvailRepo.findConflictingBookings(eventManagerId, reqStartDt, reqEndDt, eventServiceEntity.id);
+    
+    // Check max concurrent events allowed (default 1 unless configured on active block or service)
+    const maxCapacity = 1;
+    if (overlappingEmBookings.length >= maxCapacity) {
+      const error = new Error('The event manager is already booked to full capacity for this time slot. Please choose another time.');
+      error.statusCode = 409;
+      error.code = 'EVENT_MANAGER_FULLY_BOOKED';
+      throw error;
+    }
+  }
+
+  // Validate Positive Integer Guest Count
+  const parsedGuestCount = Number(total_persons);
+  if (!Number.isInteger(parsedGuestCount) || parsedGuestCount < 1) {
+    const error = new Error('Guest count must be a positive integer of at least 1.');
+    error.statusCode = 400;
+    error.code = 'INVALID_GUEST_COUNT';
+    throw error;
+  }
+
+  // Authoritative Resource Validation & Ownership Verification
+  let selectedTableEntity = null;
+  if (table_id) {
+    selectedTableEntity = await (tableRepository.findTableById || tableRepository.getTableById)(table_id);
+    if (!selectedTableEntity || String(selectedTableEntity.cafe_id) !== String(cafe_id)) {
+      const error = new Error('Selected table does not belong to this cafe or does not exist.');
+      error.statusCode = 400;
+      error.code = 'INVALID_TABLE';
+      throw error;
+    }
+  }
+
+  // Authoritative Capacity Calculation and Validation
+  const { calculateAllowedGuestCount, validateGuestCount } = require('../utils/capacityValidator');
+  const capacityInfo = calculateAllowedGuestCount({
+    cafe,
+    selectedTable: selectedTableEntity,
+    cafePackage: matchedProviderType === 'CAFE' ? pkg : null,
+    eventService: matchedProviderType === 'EVENT' ? (eventServiceEntity || pkg) : null,
+    inclusions: data.inclusions,
+  });
+
+  const capacityValidation = validateGuestCount(parsedGuestCount, capacityInfo);
+  if (!capacityValidation.isValid) {
+    const error = new Error(capacityValidation.message);
+    error.statusCode = 400;
+    error.code = capacityValidation.code;
+    error.maxAllowed = capacityValidation.maxAllowed;
+    error.bindingConstraint = capacityValidation.bindingConstraint;
+    throw error;
+  }
+
   // Calculate Package & Inclusions Charges strictly on backend
   if (pkg) {
       console.log(`[FAHARA PACKAGE DEBUG] bookingId: ${data.bookingId || 'NEW'} | requestedPackageId: ${package_id} | resolvedPackageId: ${pkg.id} | providerType: ${matchedProviderType}`);
 
+      // Verify Package Ownership
+      if (matchedProviderType === 'CAFE' && String(pkg.cafe_id) !== String(cafe_id)) {
+        const error = new Error('Selected cafe package does not belong to this cafe.');
+        error.statusCode = 400;
+        error.code = 'INVALID_PACKAGE_OWNERSHIP';
+        throw error;
+      }
+
       let packageInclusionsTotal = 0;
       let rawInclusions = pkg.inclusions;
+
       if (typeof rawInclusions === 'string') {
         try { rawInclusions = JSON.parse(rawInclusions); } catch(e) { rawInclusions = null; }
       }
@@ -592,7 +795,7 @@ const createBooking = async (userId, data) => {
     booking_date: bDate,
     start_time: sTime,
     end_time: eTime,
-    hours,
+    hours: effectiveHours,
     total_persons,
     cafe_amount,
     event_service_amount,
@@ -1082,14 +1285,70 @@ const cancelBooking = async (id, userId, userRole) => {
     throw error;
   }
 
-  // Customer cancellation rule: allowed ONLY within 3 hours from the time of booking creation
-  if (isCustomer && !isAdmin && !isCafeOwner && !isEventManager) {
-    const now = new Date();
-    const bookingCreatedAt = new Date(booking.created_at || now);
-    const hoursSinceBookingCreated = (now.getTime() - bookingCreatedAt.getTime()) / (1000 * 60 * 60);
+  // Terminal / non-cancellable status check
+  if (['COMPLETED', 'REJECTED', 'DECLINED'].includes(booking.booking_status)) {
+    const error = new Error(`Cannot cancel a booking with status ${booking.booking_status}`);
+    error.statusCode = 400;
+    throw error;
+  }
 
-    if (hoursSinceBookingCreated > 3) {
-      const error = new Error('Cancellations are allowed only within 3 hours from the time of booking creation.');
+  // Customer cancellation rule: Customer may cancel only when the scheduled start time is MORE than 3 hours away.
+  // When the booking starts within 3 hours or has already passed, customer cancellation is restricted.
+  if (isCustomer && !isAdmin && !isCafeOwner && !isEventManager) {
+    if (!booking.booking_date) {
+      const error = new Error('Scheduled booking date is missing');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let dateOnlyStr;
+    if (typeof booking.booking_date === 'string') {
+      dateOnlyStr = booking.booking_date.split('T')[0];
+    } else if (booking.booking_date instanceof Date) {
+      dateOnlyStr = booking.booking_date.toISOString().split('T')[0];
+    } else {
+      dateOnlyStr = String(booking.booking_date).split('T')[0];
+    }
+
+    let hours = '00';
+    let mins = '00';
+    let secs = '00';
+
+    if (booking.start_time) {
+      if (typeof booking.start_time === 'string') {
+        const timePart = booking.start_time.includes('T') ? booking.start_time.split('T')[1].slice(0, 8) : booking.start_time;
+        const [h, m, s] = timePart.split(':');
+        hours = h ? h.padStart(2, '0') : '00';
+        mins = m ? m.padStart(2, '0') : '00';
+        secs = s ? s.padStart(2, '0') : '00';
+      } else if (booking.start_time instanceof Date) {
+        hours = String(booking.start_time.getUTCHours()).padStart(2, '0');
+        mins = String(booking.start_time.getUTCMinutes()).padStart(2, '0');
+        secs = String(booking.start_time.getUTCSeconds()).padStart(2, '0');
+      }
+    }
+
+    // Combine scheduled date and time in UTC
+    const scheduledStartTime = new Date(`${dateOnlyStr}T${hours}:${mins}:${secs}Z`);
+    const now = new Date();
+
+    if (isNaN(scheduledStartTime.getTime())) {
+      const error = new Error('Invalid scheduled booking time');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const msUntilStart = scheduledStartTime.getTime() - now.getTime();
+    const hoursUntilStart = msUntilStart / (1000 * 60 * 60);
+
+    if (hoursUntilStart <= 0) {
+      const error = new Error('Cancellation is unavailable for bookings that have already started or passed.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (hoursUntilStart <= 3) {
+      const error = new Error('Cancellation is unavailable within 3 hours of your booking.');
       error.statusCode = 400;
       throw error;
     }
@@ -1179,8 +1438,80 @@ const selectPackage = async (id, userId, payload) => {
   return await pricingEngine.calculateBookingPricing(id);
 };
 
+const validateCapacity = async (data = {}) => {
+  const {
+    cafe_id,
+    table_id,
+    package_id,
+    event_service_id,
+    total_persons,
+    inclusions = []
+  } = data;
+
+  if (!cafe_id) {
+    const error = new Error('cafe_id is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const cafe = await cafeRepository.findCafeById(cafe_id);
+  if (!cafe) {
+    const error = new Error('Cafe not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  let selectedTable = null;
+  if (table_id) {
+    selectedTable = await (tableRepository.findTableById || tableRepository.getTableById)(table_id);
+    if (!selectedTable || String(selectedTable.cafe_id) !== String(cafe_id)) {
+      const error = new Error('Selected table does not belong to this cafe or does not exist.');
+      error.statusCode = 400;
+      error.code = 'INVALID_TABLE';
+      throw error;
+    }
+  }
+
+  let cafePackage = null;
+  if (package_id && cafe.cafe_packages) {
+    cafePackage = cafe.cafe_packages.find(p => String(p.id) === String(package_id)) || null;
+  }
+
+  let eventService = null;
+  const eventServiceIdToLookup = event_service_id || (package_id && !cafePackage ? package_id : null);
+  if (eventServiceIdToLookup) {
+    const eventServiceRepo = require('../repositories/eventServiceRepository');
+    const ext = await eventServiceRepo.findEventServiceById(eventServiceIdToLookup);
+    if (ext) {
+      eventService = ext;
+    }
+  }
+
+  const { calculateAllowedGuestCount, validateGuestCount } = require('../utils/capacityValidator');
+  const capacityInfo = calculateAllowedGuestCount({
+    cafe,
+    selectedTable,
+    cafePackage,
+    eventService,
+    inclusions,
+  });
+
+  const guestCount = total_persons ? Number(total_persons) : null;
+  let validationResult = null;
+  if (guestCount !== null && !isNaN(guestCount)) {
+    validationResult = validateGuestCount(guestCount, capacityInfo);
+  }
+
+  return {
+    capacityInfo,
+    validationResult,
+    requestedGuestCount: guestCount,
+  };
+};
+
 module.exports = {
   createBooking,
+  validateCapacity,
   getMyBookings,
   getCafeBookings,
   getAllAdminBookings,
@@ -1191,3 +1522,4 @@ module.exports = {
   cancelBooking,
   deleteBooking,
 };
+

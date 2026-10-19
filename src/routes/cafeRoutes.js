@@ -6,6 +6,7 @@ const { protect, optionalAuth } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
 const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 const tableRoutes = require('./tableRoutes');
+const availabilityRoutes = require('./availabilityRoutes');
 
 const router = express.Router();
 
@@ -64,6 +65,9 @@ router.get('/categories', cafeController.getCategories);
 
 // --- Cafe Tables Routes ---
 router.use('/:cafeId/tables', tableRoutes);
+
+// --- Cafe Availability Routes ---
+router.use('/:cafeId/availability', availabilityRoutes);
 
 // --- Cafe Packages Routes (defined before /:id to prevent route clashing) ---
 router.get('/packages/:packageId', cafeController.getPackageById);

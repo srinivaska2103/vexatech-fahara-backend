@@ -70,6 +70,29 @@ const createOrder = async (userId, bookingId) => {
     throw error;
   }
 
+  // 1b. Revalidate Capacity & Availability Before Payment (Requirement 8)
+  const { calculateAllowedGuestCount, validateGuestCount } = require('../utils/capacityValidator');
+  const tableRepo = require('../repositories/tableRepository');
+  const bookedTables = booking.booking_tables?.map(bt => bt.cafe_tables) || [];
+  const primaryTable = bookedTables.length > 0 ? bookedTables[0] : null;
+
+  const capacityInfo = calculateAllowedGuestCount({
+    cafe: booking.cafes,
+    selectedTable: primaryTable,
+    cafePackage: booking.packages,
+    eventService: booking.event_services,
+    inclusions: booking.inclusions,
+  });
+
+  const capacityValidation = validateGuestCount(booking.total_persons, capacityInfo);
+  if (!capacityValidation.isValid) {
+    const error = new Error(`Payment cannot be initiated: ${capacityValidation.message}`);
+    error.statusCode = 400;
+    error.code = capacityValidation.code;
+    throw error;
+  }
+
+
   // 2. Calculate Backend Verified Price via Central Pricing Engine
   const pricingEngine = require('./pricingEngine');
   const pricing = await pricingEngine.calculateBookingPricing(booking.id);

@@ -192,6 +192,9 @@ const checkBookingTimeBusinessHours = (entity, dateVal, startTimeVal, endTimeVal
     dayEntry = businessHours[keyLower] || businessHours[dayName];
   }
 
+  const name = entity.name || entity.service_name || entity.package_name || entity.title || entityLabel;
+  const dayFormatted = dayName ? (dayName.charAt(0) + dayName.slice(1).toLowerCase()) : 'the selected day';
+
   if (dayEntry) {
     const isClosed = dayEntry.is_closed === true || 
                      dayEntry.isClosed === true || 

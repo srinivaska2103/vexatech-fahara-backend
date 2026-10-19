@@ -1,17 +1,44 @@
-PrismaClientKnownRequestError: 
-Invalid `prisma.notifications.findFirst()` invocation in
-D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\repositories\notificationRepository.js:49:37
+PrismaClientValidationError: 
+Invalid `prisma.bookings.findMany()` invocation in
+D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\dashboardService.js:573:42
 
-  46 };
-  47 
-  48 const getNotificationById = async (userId, id) => {
-→ 49   return await prisma.notifications.findFirst(
-Invalid input value: invalid input syntax for type uuid: "stats"
-    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:8286)
+  570 
+  571 const getRecentBookings = async (ownerId, role) => {
+  572   const isAdmin = role === 'ADMIN';
+→ 573   const bookings = await prisma.bookings.findMany({
+          where: {
+            cafes: {
+              owner_id: "28a82d2b-8258-4d19-a1e0-de41c52cfd76"
+            }
+          },
+          orderBy: {
+            created_at: "desc"
+          },
+          take: 10,
+          include: {
+            users: true,
+            cafes: true,
+            tables: true,
+            ~~~~~~
+            cafe_packages: true,
+        ?   event_services?: true,
+        ?   notifications?: true,
+        ?   payments?: true,
+        ?   payment_refunds?: true,
+        ?   reviews?: true,
+        ?   booking_tables?: true,
+        ?   loyalty_credit_transactions?: true,
+        ?   loyalty_redemptions?: true,
+        ?   booking_items?: true
+          }
+        })
+
+Unknown field `tables` for include statement on model `bookings`. Available options are marked with ?.
+    at ar (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:10:1374)
+    at zr.handleRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7929)
     at zr.handleAndLogRequestError (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7581)
     at zr.request (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:65:7288)
     at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
     at async a (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\node_modules\@prisma\client\runtime\client.js:75:6862)
-    at async Object.getNotificationById (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\repositories\notificationRepository.js:49:10)
-    at async Object.getNotificationById (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\notificationService.js:473:13)
-    at async getNotificationById (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\notificationController.js:17:20)
+    at async Object.getRecentBookings (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\services\dashboardService.js:573:20)
+    at async getRecentBookings (D:\Srinivas\Fahara Web App\vexatech-fahara-backend\src\controllers\dashboardController.js:24:22)

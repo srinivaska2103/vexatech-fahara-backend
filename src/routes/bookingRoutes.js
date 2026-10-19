@@ -2,7 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const bookingController = require('../controllers/bookingController');
 const validateRequest = require('../middlewares/validateRequest');
-const { protect } = require('../middlewares/authMiddleware');
+const { protect, optionalAuth } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
 const { requireActivePartnerSubscription } = require('../middlewares/subscriptionMiddleware');
 
@@ -16,8 +16,8 @@ const bookingSchema = Joi.object({
   table_id: Joi.string().uuid().allow(null, ''),
   booking_date: Joi.string().isoDate().required(),
   start_time: Joi.string().pattern(/^([01]\d|2[0-3]):?([0-5]\d):?([0-5]\d)$/).required().messages({'string.pattern.base': 'start_time must be HH:mm:ss'}),
-  end_time: Joi.string().pattern(/^([01]\d|2[0-3]):?([0-5]\d):?([0-5]\d)$/).required().messages({'string.pattern.base': 'end_time must be HH:mm:ss'}),
-  hours: Joi.number().integer().min(1).required(),
+  end_time: Joi.string().pattern(/^([01]\d|2[0-3]):?([0-5]\d):?([0-5]\d)$/).allow(null, '').optional().messages({'string.pattern.base': 'end_time must be HH:mm:ss'}),
+  hours: Joi.number().integer().min(1).allow(null).optional(),
   total_persons: Joi.number().integer().min(1).required(),
   food_amount: Joi.number().min(0).default(0),
   decoration_amount: Joi.number().min(0).default(0),
@@ -102,6 +102,8 @@ const statusSchema = Joi.object({
  *         description: Time slot not available
  */
 router.post('/', protect, authorizeRoles('CUSTOMER', 'CAFE_OWNER', 'EVENT_MANAGER', 'ADMIN'), validateRequest(bookingSchema), bookingController.createBooking);
+router.post('/capacity-check', optionalAuth, bookingController.validateCapacity);
+
 
 /**
  * @swagger

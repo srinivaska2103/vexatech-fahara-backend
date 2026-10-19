@@ -1,29 +1,107 @@
 const prisma = require('../config/prisma');
-const checkAvailability = async (cafeId, bookingDate, startTime, endTime) => {
-  // startTime and endTime should be Date objects formatted properly
+const checkAvailability = async (cafeId, bookingDate, startTime, endTime, eventServiceId = null) => {
+  if (!bookingDate || !startTime || !endTime) return true;
+
+  const validBDate = bookingDate instanceof Date ? bookingDate : new Date(bookingDate);
+  const validSTime = startTime instanceof Date ? startTime : new Date(startTime);
+  const validETime = endTime instanceof Date ? endTime : new Date(endTime);
+
+  if (isNaN(validBDate.getTime()) || isNaN(validSTime.getTime()) || isNaN(validETime.getTime())) {
+    return true;
+  }
+
+  // 1. Check overlapping active bookings for the cafe
   const overlappingBooking = await prisma.bookings.findFirst({
     where: {
       cafe_id: cafeId,
-      booking_date: bookingDate,
+      booking_date: validBDate,
       booking_status: {
-        in: ['PENDING', 'CONFIRMED'],
+        in: ['PENDING', 'CONFIRMED', 'ACCEPTED'],
       },
       AND: [
         {
           start_time: {
-            lt: endTime,
+            lt: validETime,
           },
         },
         {
           end_time: {
-            gt: startTime,
+            gt: validSTime,
           },
         },
       ],
     },
   });
 
-  return overlappingBooking === null;
+  if (overlappingBooking !== null) {
+    return false;
+  }
+
+  // 2. Check active availability blocks for the cafe
+  let reqDate = bookingDate instanceof Date ? bookingDate : new Date(bookingDate);
+  if (isNaN(reqDate.getTime())) {
+    reqDate = new Date();
+  }
+
+  const sHours = startTime instanceof Date ? (isNaN(startTime.getTime()) ? 12 : startTime.getUTCHours()) : parseInt(String(startTime).split(':')[0] || 12, 10);
+  const sMins = startTime instanceof Date ? (isNaN(startTime.getTime()) ? 0 : startTime.getUTCMinutes()) : parseInt(String(startTime).split(':')[1] || 0, 10);
+  const eHours = endTime instanceof Date ? (isNaN(endTime.getTime()) ? 13 : endTime.getUTCHours()) : parseInt(String(endTime).split(':')[0] || 13, 10);
+  const eMins = endTime instanceof Date ? (isNaN(endTime.getTime()) ? 0 : endTime.getUTCMinutes()) : parseInt(String(endTime).split(':')[1] || 0, 10);
+
+  const reqStart = new Date(Date.UTC(reqDate.getUTCFullYear(), reqDate.getUTCMonth(), reqDate.getUTCDate(), sHours, sMins, 0));
+  const reqEnd = new Date(Date.UTC(reqDate.getUTCFullYear(), reqDate.getUTCMonth(), reqDate.getUTCDate(), eHours, eMins, 0));
+
+  if (!isNaN(reqStart.getTime()) && !isNaN(reqEnd.getTime())) {
+    const activeCafeBlock = await prisma.cafe_availability_blocks.findFirst({
+      where: {
+        cafe_id: cafeId,
+        is_active: true,
+        start_at: {
+          lt: reqEnd
+        },
+        end_at: {
+          gt: reqStart
+        }
+      }
+    });
+
+    if (activeCafeBlock !== null) {
+      return false;
+    }
+  }
+
+  // 3. If an eventServiceId is provided, also check Event Manager active blocks
+  if (eventServiceId && !isNaN(reqStart.getTime()) && !isNaN(reqEnd.getTime())) {
+    const service = await prisma.event_services.findUnique({
+      where: { id: eventServiceId },
+      select: { user_id: true }
+    });
+
+    if (service && service.user_id) {
+      const activeEmBlock = await prisma.event_availability_blocks.findFirst({
+        where: {
+          event_manager_id: service.user_id,
+          is_active: true,
+          start_at: {
+            lt: reqEnd
+          },
+          end_at: {
+            gt: reqStart
+          },
+          OR: [
+            { service_id: null },
+            { service_id: eventServiceId }
+          ]
+        }
+      });
+
+      if (activeEmBlock !== null) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 };
 
 const createBooking = async (data) => {

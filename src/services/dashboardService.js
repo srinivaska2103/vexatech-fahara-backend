@@ -12,9 +12,31 @@ const getSummary = async (ownerId, role) => {
 
   const activeBookings = bookings.filter(b => b.booking_status === 'CONFIRMED' || b.booking_status === 'PENDING').length;
   
+  // Total Revenue = Sum of eligible booking amounts, strictly excluding cancelled and refunded bookings
+  const isEligibleBooking = (b) => {
+    const bStatus = String(b.booking_status || '').toUpperCase();
+    const pStatus = String(b.payment_status || '').toUpperCase();
+    if (['CANCELLED', 'REJECTED', 'DECLINED'].includes(bStatus)) return false;
+    if (['REFUNDED', 'PARTIALLY_REFUNDED', 'FAILED'].includes(pStatus)) return false;
+    const isCompleted = bStatus === 'COMPLETED';
+    const isPaid = ['COMPLETED', 'PAID', 'SUCCESS'].includes(pStatus);
+    const isConfirmedAndPaid = bStatus === 'CONFIRMED' && (isPaid || Number(b.cafe_amount || b.subtotal || 0) === 0);
+    return isCompleted || isPaid || isConfirmedAndPaid;
+  };
+
+  const getCafeNetRevenue = (b) => {
+    let cafeNet = Number(b.cafe_amount || 0);
+    if (cafeNet <= 0) {
+      const calcSub = Number(b.subtotal || b.total || 0);
+      const evAmt = Number(b.event_service_amount || 0);
+      cafeNet = Math.max(0, calcSub - evAmt);
+    }
+    return Math.max(0, cafeNet);
+  };
+
   const totalRevenue = bookings
-    .filter(b => ['COMPLETED', 'CONFIRMED'].includes((b.booking_status || '').toUpperCase()) || ['COMPLETED', 'PAID', 'SUCCESS'].includes((b.payment_status || '').toUpperCase()))
-    .reduce((sum, b) => sum + Number(b.subtotal || b.total || 0), 0);
+    .filter(isEligibleBooking)
+    .reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
 
   const customerSet = new Set();
   bookings.forEach(b => {
@@ -77,6 +99,8 @@ const getSummary = async (ownerId, role) => {
     const isSuccessful = (b) => {
       const bStatus = (b.booking_status || '').toUpperCase();
       const pStatus = (b.payment_status || '').toUpperCase();
+      if (['CANCELLED', 'REJECTED', 'DECLINED'].includes(bStatus)) return false;
+      if (['REFUNDED', 'PARTIALLY_REFUNDED', 'FAILED'].includes(pStatus)) return false;
       return ['COMPLETED', 'CONFIRMED'].includes(bStatus) || ['COMPLETED', 'PAID', 'SUCCESS'].includes(pStatus);
     };
 
@@ -143,11 +167,11 @@ const getSummary = async (ownerId, role) => {
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
   const thisMonthRevenue = bookings
-    .filter(b => new Date(b.created_at) >= thirtyDaysAgo && (b.booking_status === 'COMPLETED' || b.payment_status === 'COMPLETED' || b.payment_status === 'PAID'))
-    .reduce((sum, b) => sum + Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0))), 0);
+    .filter(b => new Date(b.created_at) >= thirtyDaysAgo && isEligibleBooking(b))
+    .reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
   const lastMonthRevenue = bookings
-    .filter(b => new Date(b.created_at) >= sixtyDaysAgo && new Date(b.created_at) < thirtyDaysAgo && (b.booking_status === 'COMPLETED' || b.payment_status === 'COMPLETED' || b.payment_status === 'PAID'))
-    .reduce((sum, b) => sum + Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0))), 0);
+    .filter(b => new Date(b.created_at) >= sixtyDaysAgo && new Date(b.created_at) < thirtyDaysAgo && isEligibleBooking(b))
+    .reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
   const revenueTrend = lastMonthRevenue > 0 ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100) : (thisMonthRevenue > 0 ? 100 : 0);
 
   const thisMonthBookings = bookings.filter(b => new Date(b.created_at) >= thirtyDaysAgo).length;
@@ -196,10 +220,9 @@ const getSummary = async (ownerId, role) => {
     
     // Revenue for that day (bookings created or paid that day)
     const dayBookings = bookings.filter(b => 
-      b.created_at >= startOfDay && b.created_at < endOfDay && 
-      (b.booking_status === 'COMPLETED' || b.payment_status === 'COMPLETED' || b.payment_status === 'PAID')
+      b.created_at >= startOfDay && b.created_at < endOfDay && isEligibleBooking(b)
     );
-    return dayBookings.reduce((sum, b) => sum + Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0))), 0);
+    return dayBookings.reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
   });
 
   const bookingChartData = last7Days.map(d => {
@@ -265,8 +288,8 @@ const getSummary = async (ownerId, role) => {
         };
       }
       customerStats[b.customer_id].visits += 1;
-      if (b.booking_status === 'COMPLETED' || b.payment_status === 'COMPLETED' || b.payment_status === 'PAID') {
-        customerStats[b.customer_id].spent += Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0)));
+      if (isEligibleBooking(b)) {
+        customerStats[b.customer_id].spent += getCafeNetRevenue(b);
       }
     }
   });
@@ -289,9 +312,11 @@ const getSummary = async (ownerId, role) => {
       if (!eventStats[eventId]) {
         eventStats[eventId] = { id: eventId, type, tickets_sold: 0, revenue: 0 };
       }
-      eventStats[eventId].tickets_sold += (b.total_persons || 0);
-      if (b.booking_status === 'COMPLETED' || b.payment_status === 'COMPLETED' || b.payment_status === 'PAID') {
-        eventStats[eventId].revenue += Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0)));
+      if (String(b.booking_status || '').toUpperCase() !== 'CANCELLED') {
+        eventStats[eventId].tickets_sold += (b.total_persons || 0);
+      }
+      if (isEligibleBooking(b)) {
+        eventStats[eventId].revenue += getCafeNetRevenue(b);
       }
     }
   });
@@ -327,10 +352,88 @@ const getSummary = async (ownerId, role) => {
     else timeSlotCounts.night++;
   });
 
+  // Primary Cafe Information & Opening Hours
+  let primaryCafe = null;
+  let todayHours = null;
+  let openStatus = 'CLOSED';
+
+  if (cafes.length > 0) {
+    const firstCafe = await prisma.cafes.findUnique({
+      where: { id: cafes[0].id },
+      include: { cafe_business_hours: true }
+    });
+
+    if (firstCafe) {
+      primaryCafe = {
+        id: firstCafe.id,
+        name: firstCafe.name,
+        city: firstCafe.city,
+        address: firstCafe.address,
+        cover_image: firstCafe.cover_image,
+        category: firstCafe.category,
+        status: firstCafe.status,
+        is_walking_cafe: firstCafe.is_walking_cafe || false,
+      };
+
+      const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+      const todayDayStr = daysOfWeek[now.getDay()];
+      const todaySchedule = firstCafe.cafe_business_hours?.find(
+        h => String(h.day_of_week || '').toUpperCase() === todayDayStr
+      );
+
+      if (todaySchedule && !todaySchedule.is_closed && todaySchedule.open_time && todaySchedule.close_time) {
+        const formatTime = (dt) => {
+          const d = new Date(dt);
+          const h = d.getUTCHours();
+          const m = d.getUTCMinutes();
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const hh = h % 12 || 12;
+          const mm = m < 10 ? `0${m}` : m;
+          return `${hh}:${mm} ${ampm}`;
+        };
+
+        const openTimeStr = formatTime(todaySchedule.open_time);
+        const closeTimeStr = formatTime(todaySchedule.close_time);
+        todayHours = `${openTimeStr} – ${closeTimeStr}`;
+
+        // Check if current time is within open and close time
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const openD = new Date(todaySchedule.open_time);
+        const closeD = new Date(todaySchedule.close_time);
+        const openMinutes = openD.getUTCHours() * 60 + openD.getUTCMinutes();
+        const closeMinutes = closeD.getUTCHours() * 60 + closeD.getUTCMinutes();
+
+        if (currentMinutes >= openMinutes && currentMinutes <= closeMinutes) {
+          openStatus = 'OPEN_NOW';
+        } else {
+          openStatus = 'CLOSED';
+        }
+      } else if (todaySchedule?.is_closed) {
+        todayHours = 'Closed Today';
+        openStatus = 'CLOSED';
+      } else {
+        todayHours = 'Hours not configured';
+        openStatus = 'OPEN';
+      }
+    }
+  }
+
+  const confirmedBookingsCount = bookings.filter(b => (b.booking_status || '').toUpperCase() === 'CONFIRMED').length;
+  const pendingBookingsCount = bookings.filter(b => (b.booking_status || '').toUpperCase() === 'PENDING').length;
+  const completedBookingsCount = bookings.filter(b => (b.booking_status || '').toUpperCase() === 'COMPLETED').length;
+  const cancelledBookingsCount = bookings.filter(b => (b.booking_status || '').toUpperCase() === 'CANCELLED').length;
+
   return {
+    primary_cafe: primaryCafe,
+    today_hours: todayHours,
+    open_status: openStatus,
     total_revenue: totalRevenue,
     revenue_trend: revenueTrend,
     total_bookings: bookings.length,
+    confirmed_bookings: confirmedBookingsCount,
+    pending_bookings: pendingBookingsCount,
+    completed_bookings: completedBookingsCount,
+    cancelled_bookings: cancelledBookingsCount,
     booking_trend: bookingTrend,
     new_customers: totalCustomers,
     customer_trend: customerTrend,
@@ -361,11 +464,30 @@ const getSummary = async (ownerId, role) => {
   };
 };
 
-const getRevenueStats = async (ownerId, period, role) => {
+const getRevenueStats = async (ownerId, period = '12M', role) => {
   const isAdmin = role === 'ADMIN';
+  const periodUpper = String(period || '12M').toUpperCase();
+
+  const now = new Date();
+  let startDate = new Date();
+
+  if (periodUpper === '7D' || periodUpper === '7DAYS') {
+    startDate.setDate(now.getDate() - 7);
+  } else if (periodUpper === '30D' || periodUpper === '30DAYS') {
+    startDate.setDate(now.getDate() - 30);
+  } else if (periodUpper === '90D' || periodUpper === '90DAYS') {
+    startDate.setDate(now.getDate() - 90);
+  } else {
+    // 1 year / 12 months default
+    startDate.setFullYear(now.getFullYear() - 1);
+  }
+
   const bookings = await prisma.bookings.findMany({
     where: { 
       ...(isAdmin ? {} : { cafes: { owner_id: ownerId } }),
+      booking_status: { notIn: ['CANCELLED', 'REJECTED', 'DECLINED'] },
+      payment_status: { notIn: ['REFUNDED', 'PARTIALLY_REFUNDED', 'FAILED'] },
+      created_at: { gte: startDate },
       OR: [
         { booking_status: 'COMPLETED' },
         { payment_status: 'COMPLETED' },
@@ -374,26 +496,75 @@ const getRevenueStats = async (ownerId, period, role) => {
     },
     select: {
       created_at: true,
+      cafe_amount: true,
       subtotal: true,
+      total: true,
       event_service_amount: true,
       package_id: true,
       event_service_id: true
     }
   });
 
+  const getCafeNet = (b) => {
+    let cafeNet = Number(b.cafe_amount || 0);
+    if (cafeNet <= 0) {
+      const calcSub = Number(b.subtotal || b.total || 0);
+      const evAmt = Number(b.event_service_amount || 0);
+      cafeNet = Math.max(0, calcSub - evAmt);
+    }
+    return Math.max(0, cafeNet);
+  };
+
+  if (periodUpper === '7D' || periodUpper === '7DAYS') {
+    // Group by daily labels
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+
+    return days.map(d => {
+      const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+      const dayBookings = bookings.filter(b => b.created_at >= startOfDay && b.created_at < endOfDay);
+      const rev = dayBookings.reduce((sum, b) => sum + getCafeNet(b), 0);
+      return {
+        name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        revenue: rev
+      };
+    });
+  }
+
+  if (periodUpper === '30D' || periodUpper === '30DAYS') {
+    // Group into 5-day intervals or weekly
+    const weeks = [
+      { name: 'Week 1', days: 7 },
+      { name: 'Week 2', days: 14 },
+      { name: 'Week 3', days: 21 },
+      { name: 'Week 4', days: 30 }
+    ];
+    return weeks.map((w, idx) => {
+      const startD = new Date(now);
+      startD.setDate(now.getDate() - w.days);
+      const prevDays = idx > 0 ? weeks[idx - 1].days : 0;
+      const endD = new Date(now);
+      endD.setDate(now.getDate() - prevDays);
+      const wBookings = bookings.filter(b => b.created_at >= startD && b.created_at <= endD);
+      const rev = wBookings.reduce((sum, b) => sum + getCafeNet(b), 0);
+      return { name: w.name, revenue: rev };
+    });
+  }
+
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
-  // Group by month
   const stats = monthNames.map(name => ({ name, revenue: 0 }));
   
   bookings.forEach(b => {
     if (b.created_at) {
       const month = new Date(b.created_at).getMonth();
-      stats[month].revenue += Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0)));
+      stats[month].revenue += getCafeNet(b);
     }
   });
 
-  // Only return up to the current month or maybe all months if desired.
   return stats;
 };
 
@@ -403,19 +574,22 @@ const getRecentBookings = async (ownerId, role) => {
     where: isAdmin ? {} : { cafes: { owner_id: ownerId } },
     orderBy: { created_at: 'desc' },
     take: 10,
-    include: { users: true, cafes: true }
+    include: { users: true, cafes: true, tables: true, cafe_packages: true }
   });
 
   return bookings.map(b => ({
     id: b.id,
+    booking_reference: b.booking_reference || `#FAH-${b.id.slice(0, 8).toUpperCase()}`,
     customerName: (b.users?.name && b.users.name.toLowerCase() !== 'guest') ? b.users.name : (b.users?.email ? b.users.email.split('@')[0] : 'Customer'),
     customerEmail: b.users?.email || '',
     cafeName: b.cafes?.name || 'Cafe',
+    tableName: b.tables?.table_number ? `Table ${b.tables.table_number}` : (b.cafe_packages?.package_name || 'Standard Seating'),
     date: b.booking_date,
     time: b.start_time,
     guests: b.total_persons || 1,
     amount: Number((b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0))),
-    status: b.booking_status || 'CONFIRMED'
+    status: b.booking_status || 'CONFIRMED',
+    payment_status: b.payment_status || 'PENDING'
   }));
 };
 
