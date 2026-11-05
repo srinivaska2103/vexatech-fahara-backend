@@ -5,9 +5,9 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Fahara Backend API',
+      title: 'Grab2GO Backend API',
       version: '1.0.0',
-      description: 'API Documentation for Fahara Backend',
+      description: 'API Documentation for Grab2GO Backend',
     },
     servers: [
       {

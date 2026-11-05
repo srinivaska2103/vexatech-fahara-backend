@@ -179,6 +179,36 @@ const processRazorpayWebhook = async (req) => {
           updated_at: new Date()
         }
       });
+
+      // Record in refund_timelines
+      try {
+        await prisma.refund_timelines.create({
+          data: {
+            refund_id: refundRecord.id,
+            status: eventType === 'refund.processed' ? 'PROCESSED' : (eventType === 'refund.failed' ? 'FAILED' : 'PROCESSING'),
+            title: eventType === 'refund.processed' ? 'Refund Processed' : (eventType === 'refund.failed' ? 'Refund Failed' : 'Refund In Progress'),
+            description: eventType === 'refund.processed' 
+              ? `Refund processed by payment gateway (ARN: ${entity.acquirer_data?.arn || entity.arn || 'N/A'})`
+              : (eventType === 'refund.failed' ? (entity.error_description || 'Payment gateway failed to process refund') : 'Refund is being cleared with the issuing bank')
+          }
+        });
+      } catch (tErr) {
+        console.warn('[Webhook] Failed to insert refund timeline event:', tErr.message);
+      }
+
+      if (refundRecord.payment_id) {
+        try {
+          const foodOrderEmailEvents = require('./email/foodOrderEmailEvents');
+          const payment = await prisma.payments.findUnique({ where: { id: refundRecord.payment_id } });
+          if (payment?.gateway_order_id) {
+            const foodOrder = await prisma.food_orders.findFirst({ where: { order_number: payment.gateway_order_id } });
+            if (foodOrder) {
+              if (eventType === 'refund.processed') foodOrderEmailEvents.sendRefundProcessedEmail(foodOrder.id, refundRecord).catch(e => console.error(e));
+              else if (eventType === 'refund.failed') foodOrderEmailEvents.sendRefundFailedEmail(foodOrder.id, refundRecord).catch(e => console.error(e));
+            }
+          }
+        } catch (e) { console.warn('[Webhook] Food refund email error:', e.message); }
+      }
     }
 
     return { status: 200, message: 'Refund webhook processed successfully.' };

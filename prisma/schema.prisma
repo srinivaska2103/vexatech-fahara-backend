@@ -148,6 +148,14 @@ model cafes {
   cafe_analytics_events   cafe_analytics_events[]
   cafe_availability_blocks cafe_availability_blocks[]
   event_availability_blocks event_availability_blocks[]
+  menu_categories           menu_categories[]
+  menu_items                menu_items[]
+  menu_offers               menu_offers[]
+  cafe_fulfilment_settings  cafe_fulfilment_settings?
+  delivery_employees        delivery_employees[]
+  customer_carts            customer_carts[]
+  food_orders               food_orders[]
+  notifications             notifications[]
 
   @@index([city], map: "idx_cafes_city")
   @@index([owner_id], map: "idx_cafes_owner")
@@ -237,19 +245,26 @@ model media {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model notifications {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id           String    @db.Uuid
-  booking_id        String?   @db.Uuid
-  title             String?   @db.VarChar(255)
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String       @db.Uuid
+  booking_id        String?      @db.Uuid
+  order_id          String?      @db.Uuid
+  cafe_id           String?      @db.Uuid
+  category          String?      @default("BOOKING") @db.VarChar(40)
+  priority          String?      @default("MEDIUM") @db.VarChar(20)
+  title             String?      @db.VarChar(255)
   message           String?
-  notification_type String?   @db.VarChar(30)
-  channel           String?   @db.VarChar(20)
-  status            String?   @db.VarChar(20)
-  sent_at           DateTime? @db.Timestamp(6)
-  read_at           DateTime? @db.Timestamp(6)
-  created_at        DateTime? @default(now()) @db.Timestamp(6)
-  bookings          bookings? @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users             users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  notification_type String?      @db.VarChar(60)
+  channel           String?      @db.VarChar(20)
+  status            String?      @db.VarChar(20)
+  metadata          Json?
+  sent_at           DateTime?    @db.Timestamp(6)
+  read_at           DateTime?    @db.Timestamp(6)
+  created_at        DateTime?    @default(now()) @db.Timestamp(6)
+  bookings          bookings?    @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  food_orders       food_orders? @relation(fields: [order_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  cafes             cafes?       @relation(fields: [cafe_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  users             users        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model otp_verifications {
@@ -312,43 +327,88 @@ model payment_splits {
 }
 
 model payment_refunds {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  payment_id         String    @db.Uuid
-  booking_id         String    @db.Uuid
-  refund_amount      Decimal   @db.Decimal(10, 2)
-  razorpay_refund_id String?   @db.VarChar(100)
-  provider_refund_id String?   @db.VarChar(100)
-  provider_reversal_id String? @db.VarChar(100)
-  refund_status      String    @default("PENDING") @db.VarChar(30)
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id         String            @db.Uuid
+  booking_id         String?           @db.Uuid
+  order_id           String?           @db.Uuid
+  refund_amount      Decimal           @db.Decimal(10, 2)
+  razorpay_refund_id String?           @db.VarChar(100)
+  provider_refund_id String?           @db.VarChar(100)
+  provider_reversal_id String?         @db.VarChar(100)
+  refund_status      String            @default("PENDING") @db.VarChar(30)
   reason             String?
-  initiated_by       String?   @db.VarChar(50)
-  completed_at       DateTime? @db.Timestamp(6)
-  created_at         DateTime? @default(now()) @db.Timestamp(6)
-  updated_at         DateTime? @default(now()) @db.Timestamp(6)
-  payments           payments  @relation(fields: [payment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  bookings           bookings  @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  initiated_by       String?           @db.VarChar(50)
+  completed_at       DateTime?         @db.Timestamp(6)
+  created_at         DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?         @default(now()) @db.Timestamp(6)
+  payments           payments          @relation(fields: [payment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  bookings           bookings?         @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  food_orders        food_orders?      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  refund_timelines   refund_timelines[]
 
   @@index([payment_id], map: "idx_payment_refunds_payment")
   @@index([booking_id], map: "idx_payment_refunds_booking")
+  @@index([order_id], map: "idx_payment_refunds_order")
+}
+
+model order_cancellations {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id             String      @db.Uuid
+  customer_id          String      @db.Uuid
+  cancellation_reason  String      @db.VarChar(255)
+  additional_message   String?     @db.Text
+  cancellation_status  String      @default("CANCELLED") @db.VarChar(50)
+  requested_at         DateTime    @default(now()) @db.Timestamp(6)
+  approved_at          DateTime?   @db.Timestamp(6)
+  cancelled_at         DateTime    @default(now()) @db.Timestamp(6)
+  approved_by          String?     @db.VarChar(120)
+  created_at           DateTime    @default(now()) @db.Timestamp(6)
+  updated_at           DateTime    @default(now()) @updatedAt @db.Timestamp(6)
+
+  order                food_orders @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  customer             users       @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_order_cancellations_order")
+  @@index([customer_id], map: "idx_order_cancellations_customer")
+}
+
+model refund_timelines {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  refund_id        String          @db.Uuid
+  status           String          @db.VarChar(50)
+  description      String          @db.Text
+  gateway_event_id String?         @db.VarChar(150)
+  created_at       DateTime        @default(now()) @db.Timestamp(6)
+
+  refund           payment_refunds @relation(fields: [refund_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([refund_id], map: "idx_refund_timelines_refund")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model reviews {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  booking_id       String?   @db.Uuid
-  customer_id      String?   @db.Uuid
-  cafe_id          String?   @db.Uuid
-  event_service_id String?   @db.Uuid
-  rating           Int?
-  review           String?
-  reply            String?
-  reply_at         DateTime? @db.Timestamp(6)
-  images           Json?
-  created_at       DateTime? @default(now()) @db.Timestamp(6)
-  bookings         bookings? @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  cafes            cafes?    @relation(fields: [cafe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  event_services   event_services? @relation(fields: [event_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users            users?    @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id          String?      @db.Uuid
+  order_id            String?      @db.Uuid
+  review_type         String?      @default("BOOKING") @db.VarChar(30) // BOOKING, FOOD_ORDER
+  customer_id         String?      @db.Uuid
+  cafe_id             String?      @db.Uuid
+  event_service_id    String?      @db.Uuid
+  rating              Int?
+  food_quality_rating Int?
+  packaging_rating    Int?
+  delivery_rating     Int?
+  review_title        String?      @db.VarChar(200)
+  review              String?
+  reply               String?
+  reply_at            DateTime?    @db.Timestamp(6)
+  images              Json?
+  created_at          DateTime?    @default(now()) @db.Timestamp(6)
+  bookings            bookings?    @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  food_orders         food_orders? @relation(fields: [order_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  cafes               cafes?       @relation(fields: [cafe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  event_services      event_services? @relation(fields: [event_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?       @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model roles {
@@ -421,6 +481,9 @@ model users {
   loyalty_credit_transactions loyalty_credit_transactions[]
   loyalty_redemptions        loyalty_redemptions[]
   partner_subscriptions      partner_subscriptions[]
+  customer_carts             customer_carts?
+  food_orders                food_orders[]
+  order_cancellations        order_cancellations[]
   roles                     roles                      @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
@@ -857,4 +920,321 @@ model event_availability_blocks {
   @@index([event_manager_id, is_active], map: "idx_event_avail_blocks_active")
   @@index([service_id], map: "idx_event_avail_blocks_service")
   @@index([venue_id], map: "idx_event_avail_blocks_venue")
+}
+
+
+model menu_categories {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id       String       @db.Uuid
+  name          String       @db.VarChar(120)
+  description   String?
+  image_url     String?
+  display_order Int          @default(0)
+  is_active     Boolean      @default(true)
+  created_at    DateTime     @default(now()) @db.Timestamp(6)
+  updated_at    DateTime     @default(now()) @updatedAt @db.Timestamp(6)
+
+  cafes         cafes        @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_items    menu_items[]
+  menu_offer_categories menu_offer_categories[]
+
+  @@index([cafe_id], map: "idx_menu_categories_cafe")
+  @@index([cafe_id, is_active], map: "idx_menu_categories_cafe_active")
+  @@index([cafe_id, display_order], map: "idx_menu_categories_order")
+}
+
+model menu_items {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id          String          @db.Uuid
+  category_id      String          @db.Uuid
+  name             String          @db.VarChar(160)
+  description      String?
+  image_url        String?
+  price            Decimal         @db.Decimal(10, 2)
+  food_type        String          @default("VEG") @db.VarChar(20) // VEG, NON_VEG, EGG
+  is_available     Boolean         @default(true)
+  preparation_time Int?            @default(15) // In minutes
+  display_order    Int             @default(0)
+  is_featured      Boolean         @default(false)
+  created_at       DateTime        @default(now()) @db.Timestamp(6)
+  updated_at       DateTime        @default(now()) @updatedAt @db.Timestamp(6)
+
+  cafes            cafes           @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_categories  menu_categories @relation(fields: [category_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_offer_items menu_offer_items[]
+  customer_cart_items customer_cart_items[]
+  food_order_items    food_order_items[]
+
+  @@index([cafe_id], map: "idx_menu_items_cafe")
+  @@index([category_id], map: "idx_menu_items_category")
+  @@index([cafe_id, is_available], map: "idx_menu_items_cafe_available")
+  @@index([cafe_id, food_type], map: "idx_menu_items_food_type")
+  @@index([cafe_id, display_order], map: "idx_menu_items_order")
+}
+
+
+model menu_offers {
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id             String                  @db.Uuid
+  title               String                  @db.VarChar(160)
+  description         String?
+  offer_type          String                  @default("ITEM") @db.VarChar(30) // ITEM, CATEGORY, RESTAURANT
+  discount_type       String                  @default("PERCENTAGE") @db.VarChar(30) // PERCENTAGE, FIXED_AMOUNT
+  discount_value      Decimal                 @db.Decimal(10, 2)
+  max_discount_amount Decimal?                @db.Decimal(10, 2)
+  applicable_to       String                  @default("ITEM") @db.VarChar(30) // ITEM, CATEGORY, ALL
+  start_date          DateTime                @db.Timestamp(6)
+  end_date            DateTime                @db.Timestamp(6)
+  is_active           Boolean                 @default(true)
+  created_at          DateTime                @default(now()) @db.Timestamp(6)
+  updated_at          DateTime                @default(now()) @updatedAt @db.Timestamp(6)
+
+  cafes               cafes                   @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_offer_items    menu_offer_items[]
+  menu_offer_categories menu_offer_categories[]
+
+  @@index([cafe_id], map: "idx_menu_offers_cafe")
+  @@index([cafe_id, is_active], map: "idx_menu_offers_cafe_active")
+  @@index([cafe_id, start_date, end_date], map: "idx_menu_offers_dates")
+}
+
+model menu_offer_items {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  offer_id     String      @db.Uuid
+  item_id      String      @db.Uuid
+  created_at   DateTime    @default(now()) @db.Timestamp(6)
+
+  menu_offers  menu_offers @relation(fields: [offer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_items   menu_items  @relation(fields: [item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([offer_id, item_id], map: "uq_menu_offer_items")
+  @@index([offer_id], map: "idx_menu_offer_items_offer")
+  @@index([item_id], map: "idx_menu_offer_items_item")
+}
+
+model menu_offer_categories {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  offer_id        String          @db.Uuid
+  category_id     String          @db.Uuid
+  created_at      DateTime        @default(now()) @db.Timestamp(6)
+
+  menu_offers     menu_offers     @relation(fields: [offer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_categories menu_categories @relation(fields: [category_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([offer_id, category_id], map: "uq_menu_offer_categories")
+  @@index([offer_id], map: "idx_menu_offer_categories_offer")
+  @@index([category_id], map: "idx_menu_offer_categories_cat")
+}
+
+
+// ==========================================
+// PHASE 3: ORDERS, CART & RESTAURANT DELIVERY
+// ==========================================
+
+model cafe_fulfilment_settings {
+  id                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id                        String    @unique @db.Uuid
+  is_takeaway_enabled            Boolean   @default(true)
+  takeaway_min_order_amount      Decimal   @default(0.00) @db.Decimal(10, 2)
+  estimated_pickup_time_minutes  Int       @default(20)
+  takeaway_operating_hours       Json?
+  
+  is_delivery_enabled            Boolean   @default(false)
+  delivery_radius_km             Decimal   @default(5.00) @db.Decimal(6, 2)
+  min_delivery_order_amount      Decimal   @default(100.00) @db.Decimal(10, 2)
+  delivery_charge                Decimal   @default(30.00) @db.Decimal(10, 2)
+  free_delivery_threshold        Decimal?  @db.Decimal(10, 2)
+  estimated_delivery_time_minutes Int      @default(40)
+  delivery_operating_hours       Json?
+  
+  // Restaurant Business Hours & Food Ordering Availability
+  is_ordering_enabled            Boolean   @default(true)
+  auto_enable_ordering_hours     Boolean   @default(true)
+  allow_orders_outside_hours     Boolean   @default(false)
+  is_temporarily_paused          Boolean   @default(false)
+  pause_reason                   String?   @db.VarChar(255)
+  paused_until                   DateTime? @db.Timestamp(6)
+  restaurant_timezone            String    @default("Asia/Kolkata") @db.VarChar(60)
+  weekly_business_hours          Json?
+  special_closing_dates          Json?
+
+  created_at                     DateTime  @default(now()) @db.Timestamp(6)
+  updated_at                     DateTime  @default(now()) @updatedAt @db.Timestamp(6)
+
+  cafes                          cafes     @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model delivery_employees {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id              String             @db.Uuid
+  employee_code        String             @db.VarChar(50)
+  name                 String             @db.VarChar(120)
+  phone                String             @db.VarChar(20)
+  vehicle_type         String             @default("BIKE") @db.VarChar(30) // BIKE, SCOOTER, BICYCLE, CAR
+  vehicle_number       String?            @db.VarChar(50)
+  login_pin            String?            @db.VarChar(100)
+  is_active            Boolean            @default(true)
+  availability_status  String             @default("AVAILABLE") @db.VarChar(30) // AVAILABLE, ON_DELIVERY, OFFLINE
+  created_at           DateTime           @default(now()) @db.Timestamp(6)
+  updated_at           DateTime           @default(now()) @updatedAt @db.Timestamp(6)
+
+  cafes                cafes              @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order_assignments    order_assignments[]
+  food_orders          food_orders[]
+
+  @@unique([cafe_id, employee_code], map: "uq_delivery_employee_code")
+  @@index([cafe_id], map: "idx_delivery_employees_cafe")
+  @@index([cafe_id, is_active], map: "idx_delivery_employees_active")
+}
+
+model customer_carts {
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id String                @unique @db.Uuid
+  cafe_id     String                @db.Uuid
+  created_at  DateTime              @default(now()) @db.Timestamp(6)
+  updated_at  DateTime              @default(now()) @updatedAt @db.Timestamp(6)
+
+  users       users                 @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cafes       cafes                 @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  items       customer_cart_items[]
+
+  @@index([customer_id], map: "idx_customer_carts_user")
+}
+
+model customer_cart_items {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cart_id      String         @db.Uuid
+  menu_item_id String         @db.Uuid
+  quantity     Int            @default(1)
+  created_at   DateTime       @default(now()) @db.Timestamp(6)
+  updated_at   DateTime       @default(now()) @updatedAt @db.Timestamp(6)
+
+  cart         customer_carts @relation(fields: [cart_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_item    menu_items     @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([cart_id, menu_item_id], map: "uq_customer_cart_menu_item")
+  @@index([cart_id], map: "idx_cart_items_cart")
+}
+
+model food_orders {
+  id                        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_number              String                 @unique @db.VarChar(60)
+  customer_id               String                 @db.Uuid
+  cafe_id                   String                 @db.Uuid
+  order_type                String                 @default("TAKEAWAY") @db.VarChar(30) // TAKEAWAY, RESTAURANT_DELIVERY
+  order_status              String                 @default("NEW") @db.VarChar(40) // NEW, ACCEPTED, PREPARING, READY_FOR_PICKUP, ASSIGNED, PICKED_UP, OUT_FOR_DELIVERY, DELIVERED, COMPLETED, CANCELLED, REJECTED
+  payment_status            String                 @default("UNPAID") @db.VarChar(30) // UNPAID, PAID, CASH_ON_DELIVERY, PAY_AT_PICKUP
+  
+  subtotal                  Decimal                @db.Decimal(10, 2)
+  discount_amount           Decimal                @default(0.00) @db.Decimal(10, 2)
+  delivery_charge           Decimal                @default(0.00) @db.Decimal(10, 2)
+  tax_amount                Decimal                @default(0.00) @db.Decimal(10, 2)
+  total_amount              Decimal                @db.Decimal(10, 2)
+  
+  customer_name             String                 @db.VarChar(120)
+  customer_phone            String                 @db.VarChar(20)
+  fulfilment_address        Json?
+  pickup_date               String?                @db.VarChar(30)
+  pickup_time               String?                @db.VarChar(30)
+  delivery_instructions     String?
+  estimated_preparation_time Int?                  @default(20)
+  assigned_employee_id      String?                @db.Uuid
+  cancellation_reason       String?
+
+  created_at                DateTime               @default(now()) @db.Timestamp(6)
+  updated_at                DateTime               @default(now()) @updatedAt @db.Timestamp(6)
+
+  users                     users                  @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cafes                     cafes                  @relation(fields: [cafe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assigned_employee         delivery_employees?    @relation(fields: [assigned_employee_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  
+  order_items               food_order_items[]
+  order_assignments         order_assignments[]
+  order_status_history      order_status_history[]
+  email_notifications       email_notifications[]
+  reviews                   reviews[]
+  notifications             notifications[]
+  order_cancellations       order_cancellations[]
+  payment_refunds           payment_refunds[]
+
+  @@index([customer_id], map: "idx_food_orders_customer")
+  @@index([cafe_id], map: "idx_food_orders_cafe")
+  @@index([cafe_id, order_status], map: "idx_food_orders_cafe_status")
+  @@index([cafe_id, order_type], map: "idx_food_orders_cafe_type")
+  @@index([created_at], map: "idx_food_orders_created")
+}
+
+model food_order_items {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id             String      @db.Uuid
+  menu_item_id         String?     @db.Uuid
+  item_name_snapshot   String      @db.VarChar(160)
+  item_image_snapshot  String?
+  unit_price_snapshot  Decimal     @db.Decimal(10, 2)
+  quantity             Int         @default(1)
+  discount_snapshot    Decimal     @default(0.00) @db.Decimal(10, 2)
+  final_unit_price     Decimal     @db.Decimal(10, 2)
+  line_total           Decimal     @db.Decimal(10, 2)
+  created_at           DateTime    @default(now()) @db.Timestamp(6)
+
+  order                food_orders @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_item            menu_items? @relation(fields: [menu_item_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_food_order_items_order")
+}
+
+model order_assignments {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id          String             @db.Uuid
+  employee_id       String             @db.Uuid
+  assignment_status String             @default("ASSIGNED") @db.VarChar(30) // ASSIGNED, ACCEPTED, PICKED_UP, DELIVERED, REASSIGNED, CANCELLED
+  assigned_at       DateTime           @default(now()) @db.Timestamp(6)
+  picked_up_at      DateTime?          @db.Timestamp(6)
+  delivered_at      DateTime?          @db.Timestamp(6)
+  notes             String?
+
+  order             food_orders        @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  employee          delivery_employees @relation(fields: [employee_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_order_assignments_order")
+  @@index([employee_id], map: "idx_order_assignments_employee")
+}
+
+model order_status_history {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id           String      @db.Uuid
+  previous_status    String?     @db.VarChar(40)
+  new_status         String      @db.VarChar(40)
+  changed_by         String?     @db.VarChar(120)
+  changed_by_user_id String?     @db.Uuid
+  note               String?
+  created_at         DateTime    @default(now()) @db.Timestamp(6)
+
+  order              food_orders @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_order_status_history_order")
+}
+
+model email_notifications {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_key        String       @unique @db.VarChar(120)
+  order_id         String?      @db.Uuid
+  recipient_email  String       @db.VarChar(255)
+  recipient_type   String       @db.VarChar(30) // OWNER, CUSTOMER, ADMIN
+  notification_type String      @db.VarChar(60) // NEW_ORDER, PAYMENT_SUCCESS, PREPARING, ORDER_READY, DELIVERY_ASSIGNED, ORDER_CANCELLED, REFUND_INITIATED, REFUND_PROCESSED, REFUND_FAILED
+  subject          String       @db.VarChar(255)
+  status           String       @default("PENDING") @db.VarChar(30) // PENDING, PROCESSING, SENT, FAILED, SKIPPED
+  attempts         Int          @default(0)
+  last_error       String?
+  payload          Json?
+  sent_at          DateTime?    @db.Timestamp(6)
+  created_at       DateTime     @default(now()) @db.Timestamp(6)
+  updated_at       DateTime     @default(now()) @updatedAt @db.Timestamp(6)
+
+  order            food_orders? @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_email_notifications_order")
+  @@index([status], map: "idx_email_notifications_status")
+  @@index([notification_type], map: "idx_email_notifications_type")
+  @@index([recipient_email], map: "idx_email_notifications_email")
 }

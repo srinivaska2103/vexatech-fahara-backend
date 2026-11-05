@@ -1,3 +1,4 @@
+const restaurantAvailabilityService = require('../services/restaurantAvailabilityService');
 const prisma = require('../config/prisma');
 const { getCustomerVisibleCafeWhereClause, enrichCafeWithVisibility } = require('../services/cafeVisibilityService');
 
@@ -136,6 +137,9 @@ const stitchMediaToCafes = async (cafes) => {
       cafe.longitude = Number.isFinite(parsedLng) && parsedLng >= -180 && parsedLng <= 180 ? parsedLng : null;
     }
 
+    if (cafe.cafe_fulfilment_settings) {
+      cafe.ordering_availability = restaurantAvailabilityService.evaluateOrderingAvailability(cafe.cafe_fulfilment_settings);
+    }
     return sanitizeCafe(cafe);
   });
 
@@ -167,6 +171,15 @@ const findAllCafes = async (query = {}) => {
 
   if (query.query) {
     where.name = { contains: query.query, mode: 'insensitive' };
+  }
+
+  // Filter for venues/cafes/restaurants that provide active food menus (Grab2Go Food Ordering)
+  if (query.has_food_menu === 'true' || query.has_food_menu === true || query.food_ordering === 'true' || query.food_ordering === true) {
+    where.menu_items = {
+      some: {
+        is_available: true
+      }
+    };
   }
 
   // Restaurant filtering vs Cafe filtering
@@ -360,6 +373,11 @@ const findAllCafes = async (query = {}) => {
       cafe_packages: true,
       cafe_business_hours: true,
       reviews: true,
+      cafe_fulfilment_settings: true,
+      menu_items: {
+        where: { is_available: true },
+        select: { id: true, name: true }
+      },
     },
   });
 
@@ -515,7 +533,18 @@ const countCafesByOwner = async (ownerId) => {
   });
 };
 
+
+const findCafeByOwnerId = async (ownerId) => {
+  return await prisma.cafes.findFirst({
+    where: { owner_id: ownerId },
+    include: {
+      cafe_fulfilment_settings: true
+    }
+  });
+};
+
 module.exports = {
+  findCafeByOwnerId,
   createCafe,
   findAllCafes,
   findCafeById,

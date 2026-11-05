@@ -361,8 +361,17 @@ const getAdminPaymentById = async (req, res, next) => {
 
 const getAdminRefunds = async (req, res, next) => {
   try {
-    const data = await paymentService.getAdminRefunds(req.query);
-    res.status(200).json(data);
+    const orderCancellationRefundService = require('../services/orderCancellationRefundService');
+    const result = await orderCancellationRefundService.getAdminRefundManagement(req.query);
+    // Return unified schema with stats and table
+    res.status(200).json({
+      success: true,
+      data: result.refunds,
+      stats: result.stats,
+      total: result.total,
+      page: result.page,
+      limit: result.limit
+    });
   } catch (error) { next(error); }
 };
 
@@ -371,6 +380,14 @@ const getAdminRefundById = async (req, res, next) => {
     const data = await paymentService.getAdminRefundDetails(req.params.id);
     if (!data.data) return res.status(404).json({ success: false, message: 'Refund not found' });
     res.status(200).json(data);
+  } catch (error) { next(error); }
+};
+
+const retryAdminRefund = async (req, res, next) => {
+  try {
+    const orderCancellationRefundService = require('../services/orderCancellationRefundService');
+    const result = await orderCancellationRefundService.retryRefund(req.params.id, req.user);
+    res.status(200).json(result);
   } catch (error) { next(error); }
 };
 
@@ -598,6 +615,7 @@ module.exports = {
   getAdminPaymentById,
   getAdminRefunds,
   getAdminRefundById,
+  retryAdminRefund,
   processAdminRefund,
   syncCashfreeRefundStatus,
   getAdminDisputes,

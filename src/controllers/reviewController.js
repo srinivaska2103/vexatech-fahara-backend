@@ -3,7 +3,16 @@ const reviewService = require('../services/reviewService');
 const addReview = async (req, res, next) => {
   try {
     const review = await reviewService.addReview(req.user.id, req.body);
-    res.status(201).json({ success: true, data: review });
+    res.status(201).json({ success: true, data: review, message: 'Review submitted successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getFoodOrderReview = async (req, res, next) => {
+  try {
+    const data = await reviewService.getFoodOrderReview(req.user.id, req.params.orderId);
+    res.status(200).json({ success: true, ...data });
   } catch (error) {
     next(error);
   }
@@ -112,8 +121,7 @@ const getAdminReviews = async (req, res, next) => {
 
 const moderateReview = async (req, res, next) => {
   try {
-    const { action } = req.body;
-    const result = await reviewService.moderateReview(req.user.id, req.params.id, action);
+    const result = await reviewService.moderateReview(req.user.id, req.params.id, req.body.action);
     res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -122,6 +130,7 @@ const moderateReview = async (req, res, next) => {
 
 module.exports = {
   addReview,
+  getFoodOrderReview,
   getCafeReviews,
   getEventServiceReviews,
   deleteReview,

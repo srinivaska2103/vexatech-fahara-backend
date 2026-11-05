@@ -119,12 +119,12 @@ const verifySubscription = async (req, res) => {
     const userRole = req.user.roles?.name || req.user.role;
     let bType = 'CAFE';
     let pName = 'FAHARA CAFE PARTNER';
-    let pPrice = 299.00;
+    let pPrice = 399.00;
 
     if (userRole === 'RESTAURANT_OWNER') {
       bType = 'RESTAURANT';
       pName = 'FAHARA RESTAURANT PARTNER';
-      pPrice = 149.00;
+      pPrice = 399.00;
     } else if (userRole === 'EVENT_MANAGER') {
       bType = 'EVENT_MANAGER';
       pName = 'FAHARA EVENT PARTNER';
@@ -336,8 +336,8 @@ const createSubscription = async (req, res) => {
  */
 const getPlans = async (req, res) => {
   try {
-    const cafePlan = await subscriptionService.getOrCreatePlan('FAHARA CAFE PARTNER', 299.00, 'CAFE');
-    const restaurantPlan = await subscriptionService.getOrCreatePlan('FAHARA RESTAURANT PARTNER', 149.00, 'RESTAURANT');
+    const cafePlan = await subscriptionService.getOrCreatePlan('FAHARA CAFE PARTNER', 399.00, 'CAFE');
+    const restaurantPlan = await subscriptionService.getOrCreatePlan('FAHARA RESTAURANT PARTNER', 399.00, 'RESTAURANT');
     const eventManagerPlan = await subscriptionService.getOrCreatePlan('FAHARA EVENT PARTNER', 299.00, 'EVENT_MANAGER');
 
     return res.status(200).json({
@@ -348,7 +348,7 @@ const getPlans = async (req, res) => {
           role: 'CAFE_OWNER',
           partnerType: 'Cafe Owner',
           planName: cafePlan.name,
-          price: 299,
+          price: 399,
           billingCycle: 'MONTHLY',
           description: 'Grow footfall and take online table & package bookings for your cafe.',
           features: [
@@ -367,7 +367,7 @@ const getPlans = async (req, res) => {
           role: 'RESTAURANT_OWNER',
           partnerType: 'Restaurant Owner',
           planName: restaurantPlan.name,
-          price: 149,
+          price: 399,
           billingCycle: 'MONTHLY',
           description: 'Connect with diners and manage tables, menu & bookings effortlessly.',
           features: [

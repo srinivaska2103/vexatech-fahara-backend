@@ -34,6 +34,44 @@ router.put('/preferences', (req, res) => {
 });
 
 router.get('/admin/all', authorizeRoles('ADMIN'), notificationController.getAdminNotifications);
+
+// Admin Email Monitoring Routes
+router.get('/admin/emails', authorizeRoles('ADMIN'), async (req, res, next) => {
+  try {
+    const prisma = require('../config/prisma');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const status = req.query.status;
+    const where = status ? { status } : {};
+    const [total, sent, pending, failed, items] = await Promise.all([
+      prisma.email_notifications.count(),
+      prisma.email_notifications.count({ where: { status: 'SENT' } }),
+      prisma.email_notifications.count({ where: { status: 'PENDING' } }),
+      prisma.email_notifications.count({ where: { status: 'FAILED' } }),
+      prisma.email_notifications.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: { order: { select: { order_number: true } } }
+      })
+    ]);
+    return res.status(200).json({
+      success: true,
+      stats: { total, sent, pending, failed },
+      data: items,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/admin/emails/:id/retry', authorizeRoles('ADMIN'), async (req, res, next) => {
+  try {
+    const queue = require('../services/email/foodOrderEmailQueue');
+    const result = await queue.retryNotification(req.params.id);
+    return res.status(200).json(result);
+  } catch (err) { next(err); }
+});
 router.patch('/admin/read-all', authorizeRoles('ADMIN'), notificationController.markAllAdminAsRead);
 router.post('/admin/broadcast', authorizeRoles('ADMIN'), notificationController.broadcastAdminMessage);
 

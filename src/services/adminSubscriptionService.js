@@ -673,7 +673,7 @@ const cancelPartnerSubscription = async (subscriptionId, reason, adminUser) => {
         const { resolvePartnerDetails } = require('./subscriptionService');
         const partnerInfo = resolvePartnerDetails(fullSub.users, fullSub.business_type);
         const configuredPrice = fullSub.subscription_plans?.price ? Number(fullSub.subscription_plans.price) : (
-          partnerInfo.businessType === 'RESTAURANT' ? 149 : 299
+          partnerInfo.businessType === 'EVENT_MANAGER' ? 299 : 399
         );
         const planName = fullSub.subscription_plans?.name || (
           partnerInfo.businessType === 'RESTAURANT' ? 'FAHARA RESTAURANT PARTNER' :

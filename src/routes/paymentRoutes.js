@@ -90,6 +90,7 @@ router.get('/admin/payments/:id', protect, authorizeRoles('ADMIN'), paymentContr
 
 router.get('/admin/refunds', protect, authorizeRoles('ADMIN'), paymentController.getAdminRefunds);
 router.get('/admin/refunds/:id', protect, authorizeRoles('ADMIN'), paymentController.getAdminRefundById);
+router.post('/admin/refunds/:id/retry', protect, authorizeRoles('ADMIN'), paymentController.retryAdminRefund);
 router.post('/admin/refunds/:id/sync', protect, authorizeRoles('ADMIN'), paymentController.syncCashfreeRefundStatus);
 router.post('/admin/refunds/:id/process', protect, authorizeRoles('ADMIN'), paymentController.processAdminRefund);
 router.get('/admin/disputes', protect, authorizeRoles('ADMIN'), paymentController.getAdminDisputes);

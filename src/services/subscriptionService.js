@@ -106,7 +106,7 @@ const resolvePartnerDetails = (user, businessType = 'CAFE') => {
 /**
  * Returns plan details based on planName, targetPrice, and businessType.
  */
-const getOrCreatePlan = async (planName = 'FAHARA CAFE PARTNER', targetPrice = 299.00, businessType = 'CAFE') => {
+const getOrCreatePlan = async (planName = 'FAHARA CAFE PARTNER', targetPrice = 399.00, businessType = 'CAFE') => {
   let plan = await prisma.subscription_plans.findFirst({
     where: { name: planName, is_active: true }
   });
@@ -194,12 +194,12 @@ const getSubscriptionStatus = async (userId) => {
   const userRole = user?.roles?.name || user?.role || 'CAFE_OWNER';
   let defaultBusinessType = 'CAFE';
   let defaultPlanName = 'FAHARA CAFE PARTNER';
-  let defaultPrice = 299;
+  let defaultPrice = 399;
 
   if (userRole === 'RESTAURANT_OWNER') {
     defaultBusinessType = 'RESTAURANT';
     defaultPlanName = 'FAHARA RESTAURANT PARTNER';
-    defaultPrice = 149;
+    defaultPrice = 399;
   } else if (userRole === 'EVENT_MANAGER') {
     defaultBusinessType = 'EVENT_MANAGER';
     defaultPlanName = 'FAHARA EVENT PARTNER';
@@ -236,7 +236,7 @@ const getSubscriptionStatus = async (userId) => {
     sub.business_type === 'RESTAURANT' ? 'FAHARA RESTAURANT PARTNER' : 'FAHARA CAFE PARTNER'
   );
   const actualPrice = sub.subscription_plans?.price ? Number(sub.subscription_plans.price) : (
-    sub.business_type === 'RESTAURANT' ? 149 : 299
+    sub.business_type === 'EVENT_MANAGER' ? 299 : 399
   );
 
   return {
@@ -295,12 +295,12 @@ const createSubscription = async (user, targetRole = null) => {
 
   let businessType = 'CAFE';
   let planName = 'FAHARA CAFE PARTNER';
-  let planPrice = 299.00;
+  let planPrice = 399.00;
 
   if (userRole === 'RESTAURANT_OWNER') {
     businessType = 'RESTAURANT';
     planName = 'FAHARA RESTAURANT PARTNER';
-    planPrice = 149.00;
+    planPrice = 399.00;
   } else if (userRole === 'EVENT_MANAGER') {
     businessType = 'EVENT_MANAGER';
     planName = 'FAHARA EVENT PARTNER';
@@ -998,7 +998,7 @@ const getAdminSubscriptions = async (filters = {}) => {
     const defaultPlanName = sub.business_type === 'EVENT_MANAGER' ? 'FAHARA EVENT PARTNER' :
       sub.business_type === 'RESTAURANT' ? 'FAHARA RESTAURANT PARTNER' : 'FAHARA CAFE PARTNER';
 
-    const defaultAmount = sub.business_type === 'RESTAURANT' ? 149 : 299;
+    const defaultAmount = sub.business_type === 'EVENT_MANAGER' ? 299 : 399;
 
     return {
       id: sub.id,

@@ -574,7 +574,7 @@ const getRecentBookings = async (ownerId, role) => {
     where: isAdmin ? {} : { cafes: { owner_id: ownerId } },
     orderBy: { created_at: 'desc' },
     take: 10,
-    include: { users: true, cafes: true, tables: true, cafe_packages: true }
+    include: { users: true, cafes: true, booking_tables: { include: { cafe_tables: true } } }
   });
 
   return bookings.map(b => ({
@@ -583,7 +583,7 @@ const getRecentBookings = async (ownerId, role) => {
     customerName: (b.users?.name && b.users.name.toLowerCase() !== 'guest') ? b.users.name : (b.users?.email ? b.users.email.split('@')[0] : 'Customer'),
     customerEmail: b.users?.email || '',
     cafeName: b.cafes?.name || 'Cafe',
-    tableName: b.tables?.table_number ? `Table ${b.tables.table_number}` : (b.cafe_packages?.package_name || 'Standard Seating'),
+    tableName: b.tables?.table_number ? `Table ${b.tables.table_number}` : 'Standard Seating',
     date: b.booking_date,
     time: b.start_time,
     guests: b.total_persons || 1,

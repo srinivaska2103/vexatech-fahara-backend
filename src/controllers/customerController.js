@@ -27,6 +27,15 @@ const getCustomerBookings = async (req, res, next) => {
   }
 };
 
+const getCustomerFoodOrders = async (req, res, next) => {
+  try {
+    const orders = await customerService.getCustomerFoodOrders(req.params.id, req.user.id, req.user.roles?.name);
+    res.status(200).json({ success: true, data: orders });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getCustomerPayments = async (req, res, next) => {
   try {
     const payments = await customerService.getCustomerPayments(req.params.id, req.user.id, req.user.roles?.name);
@@ -87,6 +96,7 @@ module.exports = {
   getCustomersByOwner,
   getCustomerById,
   getCustomerBookings,
+  getCustomerFoodOrders,
   getCustomerPayments,
   getCustomerReviews,
   getCustomerAnalytics,

@@ -31,7 +31,7 @@ const sendOtpEmail = async (email, otp) => {
   const mailOptions = {
     from: process.env.FROM_EMAIL,
     to: email,
-    subject: 'Your Fahara Verification Code',
+    subject: 'Your Grab2GO Verification Code',
     text: `Your OTP is: ${otp}. It will expire in 5 minutes.`,
     html: customHtml,
   };
@@ -77,7 +77,7 @@ const sendEmail = async (to, subject, text, html, skipBcc = false, fromName = nu
 // Wrapper functions for easy integration
 const sendResetPasswordEmail = async (email, name, resetLink) => {
   const html = templates.getResetPasswordTemplate(name, resetLink);
-  await sendEmail(email, 'Reset Your Password - Fahara', 'Click the link to reset your password.', html, true);
+  await sendEmail(email, 'Reset Your Password - Grab2GO', 'Click the link to reset your password.', html, true);
 };
 
 const sendBookingStatusEmail = async ({ to, subject, htmlContent }) => {
@@ -94,7 +94,7 @@ const sendNewAccountNotificationToAdmin = async (user) => {
 };
 
 const sendAccountStatusEmail = async (email, name, title, message, kycStatus = null, rejectionReason = null, roleName = 'Partner') => {
-  const subject = `Fahara - ${title}`;
+  const subject = `Grab2GO - `;
   const text = `Hello ${name},\n\n${message}${rejectionReason ? `\nReason: ${rejectionReason}` : ''}`;
   const html = kycStatus 
     ? templates.getKycStatusTemplate(name, kycStatus, rejectionReason, roleName)
@@ -113,15 +113,15 @@ const sendKycStatusEmail = async (email, name, kycStatus, rejectionReason = null
 };
 
 const sendPayoutCompletedEmail = async (email, name, amount, referenceNumber, partnerType = 'CAFE_OWNER') => {
-  const subject = `Payout Transferred - Fahara (Ref: ${referenceNumber})`;
-  const text = `Hello ${name},\n\nYour payout of Rs. ${amount} has been successfully processed by Fahara Admin.\nReference Number: ${referenceNumber}\n\nThank you,\nFahara Team`;
+  const subject = `Payout Transferred - Grab2GO (Ref: ${referenceNumber})`;
+  const text = `Hello ${name},\n\nYour payout of Rs. ${amount} has been successfully processed by Grab2GO Admin.\nReference Number: ${referenceNumber}\n\nThank you,\nFahara Team`;
   const html = templates.getPayoutCompletedTemplate(name, amount, referenceNumber, partnerType);
   
   await sendEmail(email, subject, text, html);
 };
 
 const sendRefundCompletedEmail = async (email, name, amount, bookingNumber, referenceNumber) => {
-  const subject = `Refund Processed & Completed - Fahara (Booking #${bookingNumber})`;
+  const subject = `Refund Processed & Completed - Grab2GO (Booking #${bookingNumber})`;
   const text = `Hello ${name},\n\nYour refund of Rs. ${amount} for booking #${bookingNumber} has been successfully processed and transferred via Fahara Payments.\nReference Number: ${referenceNumber}\n\nThank you,\nFahara Team`;
   const html = templates.getRefundCompletedTemplate(name, amount, bookingNumber, referenceNumber);
   
@@ -129,7 +129,7 @@ const sendRefundCompletedEmail = async (email, name, amount, bookingNumber, refe
 };
 
 const sendBankVerifiedEmail = async (email, name, roleName = 'Partner', maskedAccount = 'XXXX-XXXX') => {
-  const subject = `Bank Account Verified & Connected - Fahara Payouts`;
+  const subject = `Bank Account Verified & Connected - Grab2GO Payouts`;
   const text = `Hello ${name},\n\nYour bank account (${maskedAccount}) has been verified and successfully connected to Fahara Payments (Razorpay Route). You are now eligible to receive automated split payouts directly to your bank account.`;
   const html = templates.getBankVerifiedTemplate(name, roleName, maskedAccount);
 
@@ -164,7 +164,7 @@ const sendSettlementCompletedEmail = async ({ email, name, amount, bookingNumber
 };
 
 const sendBirthdayPromotionalEmail = async (email, name) => {
-  const subject = `🎉 Celebrate Your Birthday with Fahara! Special Cafe Offers Inside 🎂`;
+  const subject = `🎉 Celebrate Your Birthday with Grab2GO! Special Cafe Offers Inside 🎂`;
   const text = `Hi ${name || 'Valued Guest'},\n\nYour birthday is just 30 days away! Celebrate your birthday with Fahara and get special birthday offers at cafes.\n\nBook now at https://fahara.in`;
   const html = templates.getBirthdayPromotionalTemplate(name);
 
@@ -183,8 +183,8 @@ const sendNewSubscriptionNotificationToAdmin = async (subscriptionData) => {
 const sendSubscriptionCancelledAdminEmail = async (data) => {
   const adminEmail = getAdminEmail();
   const typeTitle = data.partnerType === 'EVENT_MANAGER' ? 'Event Manager' : (data.partnerType === 'RESTAURANT' ? 'Restaurant' : 'Cafe');
-  const subject = `New Fahara ${typeTitle} Subscription Cancellation – ${data.partnerName || 'Partner'}`;
-  const text = `A partner has cancelled their Fahara subscription.\n\nPartner: ${data.partnerName}\nType: ${typeTitle}\nPlan: ${data.planName}\nEnd Date: ${data.periodEnd ? new Date(data.periodEnd).toLocaleDateString() : 'End of period'}`;
+  const subject = `New Grab2GO  Subscription Cancellation – ${data.partnerName || 'Partner'}`;
+  const text = `A partner has cancelled their Grab2GO subscription.\n\nPartner: ${data.partnerName}\nType: ${typeTitle}\nPlan: ${data.planName}\nEnd Date: ${data.periodEnd ? new Date(data.periodEnd).toLocaleDateString() : 'End of period'}`;
   const html = templates.getSubscriptionCancelledAdminTemplate(data);
 
   await sendEmail(adminEmail, subject, text, html);
@@ -193,8 +193,8 @@ const sendSubscriptionCancelledAdminEmail = async (data) => {
 const sendSubscriptionExpiredPartnerEmail = async (data) => {
   if (!data.email) return;
   const roleTitle = data.partnerType === 'EVENT_MANAGER' ? 'Event Partner' : 'Partner';
-  const subject = `Your Fahara ${roleTitle} Subscription Has Expired – Renew Now`;
-  const text = `Hello ${data.ownerName},\n\nYour Fahara subscription for ${data.partnerName} has expired. Portal management features are currently locked. Renew your subscription at ${data.renewalUrl}`;
+  const subject = `Your Grab2GO  Subscription Has Expired – Renew Now`;
+  const text = `Hello ${data.ownerName},\n\nYour Grab2GO subscription for ${data.partnerName} has expired. Portal management features are currently locked. Renew your subscription at ${data.renewalUrl}`;
   const html = templates.getSubscriptionExpiredPartnerTemplate(data);
 
   await sendEmail(data.email, subject, text, html, true);
@@ -206,7 +206,7 @@ const sendPartnerSubscriptionPaymentSuccessEmail = async (data) => {
     return { success: false, reason: 'MISSING_EMAIL' };
   }
 
-  const subject = 'Payment Successful — Your Fahara Partner Subscription Is Active';
+  const subject = 'Payment Successful — Your Grab2GO Partner Subscription Is Active';
   const { html, text } = templates.getPartnerSubscriptionPaymentSuccessTemplate(data);
 
   return await sendEmailWithTracking({
@@ -229,7 +229,7 @@ const sendPartnerSubscriptionCancellationEmail = async (data) => {
     return { success: false, reason: 'MISSING_EMAIL' };
   }
 
-  const subject = 'Your Fahara Partner Subscription Cancellation Update';
+  const subject = 'Your Grab2GO Partner Subscription Cancellation Update';
   const { html, text } = templates.getPartnerSubscriptionCancellationTemplate(data);
 
   return await sendEmailWithTracking({
@@ -252,7 +252,7 @@ const sendPartnerSubscriptionExpiredEmail = async (data) => {
     return { success: false, reason: 'MISSING_EMAIL' };
   }
 
-  const subject = 'Your Fahara Partner Subscription Has Expired — Renew Today';
+  const subject = 'Your Grab2GO Partner Subscription Has Expired — Renew Today';
   const { html, text } = templates.getPartnerSubscriptionExpiredTemplate(data);
 
   return await sendEmailWithTracking({

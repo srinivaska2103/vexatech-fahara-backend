@@ -62,6 +62,7 @@ const packageSchema = Joi.object({
 // --- Base Cafe Routes ---
 router.get('/', optionalAuth, cafeController.getCafes);
 router.get('/categories', cafeController.getCategories);
+router.get('/food-categories', require('../controllers/menuController').getPublicMenuCategories);
 
 // --- Cafe Tables Routes ---
 router.use('/:cafeId/tables', tableRoutes);

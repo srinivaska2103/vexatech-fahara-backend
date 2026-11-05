@@ -1,9 +1,22 @@
 const prisma = require('../config/prisma');
+
 const createReview = async (data) => {
   return await prisma.reviews.create({
     data,
     include: {
-      users: { select: { name: true, profile_image: true } }
+      users: { select: { name: true, profile_image: true } },
+      food_orders: {
+        select: {
+          id: true,
+          order_number: true,
+          order_items: {
+            select: {
+              item_name_snapshot: true,
+              quantity: true
+            }
+          }
+        }
+      }
     }
   });
 };
@@ -12,7 +25,19 @@ const getReviewsByCafeId = async (cafeId) => {
   return await prisma.reviews.findMany({
     where: { cafe_id: cafeId },
     include: {
-      users: { select: { name: true, profile_image: true } }
+      users: { select: { name: true, profile_image: true } },
+      food_orders: {
+        select: {
+          id: true,
+          order_number: true,
+          order_items: {
+            select: {
+              item_name_snapshot: true,
+              quantity: true
+            }
+          }
+        }
+      }
     },
     orderBy: { created_at: 'desc' }
   });
@@ -32,10 +57,39 @@ const getReviewById = async (id) => {
   const review = await prisma.reviews.findUnique({
     where: { id },
     include: {
-      users: { select: { name: true, profile_image: true, email: true, phone: true, city: true, created_at: true, _count: { select: { bookings: true, reviews: true } } } },
-      cafes: { select: { name: true, address: true } },
+      users: { 
+        select: { 
+          id: true,
+          name: true, 
+          profile_image: true, 
+          email: true, 
+          phone: true, 
+          city: true, 
+          created_at: true, 
+          _count: { select: { bookings: true, reviews: true, food_orders: true } } 
+        } 
+      },
+      cafes: { select: { id: true, name: true, address: true, cover_image: true } },
       event_services: { select: { service_name: true } },
-      bookings: { select: { booking_number: true, total: true } }
+      bookings: { select: { id: true, booking_number: true, total: true, booking_date: true } },
+      food_orders: {
+        select: {
+          id: true,
+          order_number: true,
+          total_amount: true,
+          created_at: true,
+          order_status: true,
+          order_type: true,
+          order_items: {
+            select: {
+              id: true,
+              item_name_snapshot: true,
+              quantity: true,
+              line_total: true
+            }
+          }
+        }
+      }
     }
   });
 
@@ -63,6 +117,30 @@ const getCompletedBookingsForUser = async (userId, cafeId = null, eventServiceId
 
   return await prisma.bookings.findMany({
     where: whereClause
+  });
+};
+
+const getCompletedOrderForUser = async (userId, orderId) => {
+  return await prisma.food_orders.findFirst({
+    where: {
+      id: orderId,
+      customer_id: userId,
+      order_status: 'COMPLETED'
+    },
+    include: {
+      order_items: true,
+      cafes: { select: { id: true, name: true, cover_image: true, address: true } }
+    }
+  });
+};
+
+const getReviewByOrderId = async (orderId) => {
+  return await prisma.reviews.findFirst({
+    where: { order_id: orderId },
+    include: {
+      users: { select: { name: true, profile_image: true } },
+      cafes: { select: { name: true, cover_image: true } }
+    }
   });
 };
 
@@ -99,12 +177,19 @@ const getReviewsByOwnerId = async (ownerId, filters = {}) => {
       {
         OR: [
           { review: { contains: filters.search, mode: 'insensitive' } },
+          { review_title: { contains: filters.search, mode: 'insensitive' } },
           { users: { name: { contains: filters.search, mode: 'insensitive' } } },
           { cafes: { name: { contains: filters.search, mode: 'insensitive' } } },
-          { event_services: { service_name: { contains: filters.search, mode: 'insensitive' } } }
+          { event_services: { service_name: { contains: filters.search, mode: 'insensitive' } } },
+          { food_orders: { order_number: { contains: filters.search, mode: 'insensitive' } } }
         ]
       }
     ];
+  }
+
+  // Filter by source (type): ALL, FOOD_ORDER, BOOKING
+  if (filters.type && filters.type !== 'all' && filters.type !== 'ALL') {
+    whereClause.review_type = filters.type.toUpperCase();
   }
   
   if (filters.rating && filters.rating !== 'all') {
@@ -152,10 +237,25 @@ const getReviewsByOwnerId = async (ownerId, filters = {}) => {
   return await prisma.reviews.findMany({
     where: whereClause,
     include: {
-      users: { select: { name: true, profile_image: true } },
+      users: { select: { name: true, profile_image: true, email: true, phone: true } },
       cafes: { select: { name: true } },
       event_services: { select: { service_name: true, category: true } },
-      bookings: { select: { id: true, booking_number: true, booking_date: true } }
+      bookings: { select: { id: true, booking_number: true, booking_date: true } },
+      food_orders: {
+        select: {
+          id: true,
+          order_number: true,
+          created_at: true,
+          order_status: true,
+          order_type: true,
+          order_items: {
+            select: {
+              item_name_snapshot: true,
+              quantity: true
+            }
+          }
+        }
+      }
     },
     orderBy: { created_at: 'desc' }
   });
@@ -170,7 +270,8 @@ const updateReply = async (reviewId, replyText) => {
     },
     include: {
       users: { select: { name: true, profile_image: true } },
-      cafes: { select: { name: true } }
+      cafes: { select: { name: true } },
+      food_orders: { select: { order_number: true } }
     }
   });
 };
@@ -194,7 +295,20 @@ const getAllAdminReviews = async (query = {}) => {
     include: {
       users: { select: { name: true, profile_image: true, email: true } },
       cafes: { select: { name: true } },
-      event_services: { select: { service_name: true } }
+      event_services: { select: { service_name: true } },
+      food_orders: {
+        select: {
+          id: true,
+          order_number: true,
+          cafes: { select: { name: true } },
+          order_items: {
+            select: {
+              item_name_snapshot: true,
+              quantity: true
+            }
+          }
+        }
+      }
     },
     orderBy: { created_at: 'desc' }
   });
@@ -207,6 +321,8 @@ module.exports = {
   getReviewById,
   deleteReview,
   getCompletedBookingsForUser,
+  getCompletedOrderForUser,
+  getReviewByOrderId,
   updateCafeReviewAggregates,
   updateEventServiceReviewAggregates,
   getReviewsByOwnerId,
