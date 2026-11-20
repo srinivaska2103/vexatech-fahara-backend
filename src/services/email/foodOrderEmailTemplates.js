@@ -571,6 +571,10 @@ const getOrderCancelledOwnerEmail = ({ order, reason, portalUrl }) => {
 // ============================================================================
 const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) => {
   const refundAmt = amount || refund?.refund_amount || order?.total_amount;
+  const originalPaymentAmt = order?.total_amount || refundAmt;
+  const restaurantName = order?.cafes?.name || 'Restaurant';
+  const refundRefId = refund?.provider_refund_id || refund?.razorpay_refund_id || 'Pending Gateway ID';
+  const paymentMethod = order?.payments?.[0]?.payment_method || refund?.payments?.payment_method || 'Online (UPI / Card / NetBanking)';
 
   if (type === 'INITIATED') {
     const content = `
@@ -580,48 +584,60 @@ const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) =
           💳
         </div>
         <h1 style="font-size: 22px; font-weight: 900; color: #1E1E1E; margin: 0 0 6px 0; letter-spacing: -0.5px;">
-          Your Refund Has Been Initiated
+          Your Grab2Go Order Cancellation &amp; Refund Update
         </h1>
         <p style="font-size: 13px; color: #757575; margin: 0; font-weight: 600;">
-          Order ID: <strong style="color: #16A34A; font-family: monospace;">#${escapeHtml(order.order_number)}</strong>
+          Order ID: <strong style="color: #16A34A; font-family: monospace;">#${escapeHtml(order.order_number)}</strong> &bull; ${escapeHtml(restaurantName)}
         </p>
       </div>
 
+      <p style="font-size: 14px; color: #555555; margin: 0 0 16px 0; line-height: 1.6;">
+        Hi <strong>${escapeHtml(order.customer_name)}</strong>,
+      </p>
       <p style="font-size: 14px; color: #555555; margin: 0 0 20px 0; line-height: 1.6;">
-        Hi <strong>${escapeHtml(order.customer_name)}</strong>, your refund has been initiated through our secure payment gateway (Razorpay). Below is your refund transaction receipt:
+        Your refund request has been initiated successfully. The amount will be credited according to your bank or payment provider's processing timeline.
       </p>
 
       <!-- Refund Details Card -->
       <div style="background-color: #FFFFFF; border: 1px solid #BBF7D0; border-radius: 18px; padding: 22px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(22, 163, 74, 0.06);">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="line-height: 2.2; font-size: 13px;">
           <tr>
-            <td style="color: #757575; font-weight: 600;">Refunded Amount:</td>
+            <td style="color: #757575; font-weight: 600;">Restaurant:</td>
+            <td align="right" style="font-weight: 800; color: #252525;">${escapeHtml(restaurantName)}</td>
+          </tr>
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Original Payment Amount:</td>
+            <td align="right" style="font-weight: 700; color: #252525;">${formatCurrency(originalPaymentAmt)}</td>
+          </tr>
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Refund Amount:</td>
             <td align="right" style="font-size: 20px; font-weight: 900; color: #16A34A;">
               ${formatCurrency(refundAmt)}
             </td>
           </tr>
           <tr>
-            <td style="color: #757575; font-weight: 600;">Status:</td>
+            <td style="color: #757575; font-weight: 600;">Current Refund Status:</td>
             <td align="right">
               <span style="background-color: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; padding: 3px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; text-transform: uppercase;">
-                Processing at Bank
+                Refund Initiated
               </span>
             </td>
           </tr>
-          ${refund?.provider_refund_id || refund?.razorpay_refund_id ? `
-            <tr>
-              <td style="color: #757575; font-weight: 600;">Gateway Refund Reference:</td>
-              <td align="right" style="font-family: monospace; font-size: 12px; font-weight: 800; color: #252525;">
-                ${escapeHtml(refund.provider_refund_id || refund.razorpay_refund_id)}
-              </td>
-            </tr>
-          ` : ''}
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Refund Reference ID:</td>
+            <td align="right" style="font-family: monospace; font-size: 12px; font-weight: 800; color: #252525;">
+              ${escapeHtml(refundRefId)}
+            </td>
+          </tr>
           <tr>
             <td style="color: #757575; font-weight: 600;">Original Payment Method:</td>
-            <td align="right" style="font-weight: 700; color: #252525;">Online (UPI / Card / NetBanking)</td>
+            <td align="right" style="font-weight: 700; color: #252525;">${escapeHtml(paymentMethod)}</td>
           </tr>
         </table>
       </div>
+
+      <!-- Cancelled Items Summary -->
+      ${renderItemsTable(order.order_items)}
 
       <!-- Bank Timeline Strip -->
       <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 16px; padding: 16px 20px; margin-bottom: 24px;">
@@ -631,27 +647,33 @@ const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) =
               <span style="display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; background-color: #E2E8F0; color: #475569; border-radius: 50%; font-size: 11px; font-weight: 900;">i</span>
             </td>
             <td style="font-size: 12px; color: #475569; line-height: 1.5;">
-              <strong>Bank Credit Timeline:</strong> It generally takes <strong>5 to 7 working days</strong> for the refund to reflect in your bank account, depending on your card issuer or bank.
+              <strong>Refund Processing Information:</strong> Your refund request is with Razorpay and your bank. Bank credit normally completes in <strong>5 to 7 working days</strong> (or faster for UPI). You will receive another notification once credit is confirmed.
             </td>
           </tr>
         </table>
       </div>
+
+      <p style="font-size: 12px; color: #757575; margin: 0 0 10px 0; line-height: 1.5;">
+        Need help? Contact Grab2Go Support at <a href="mailto:${SUPPORT_EMAIL}" style="color: #E50914; font-weight: 700; text-decoration: none;">${SUPPORT_EMAIL}</a> with Order ID #${escapeHtml(order.order_number)}.
+      </p>
     `;
 
     return {
-      subject: `Your Refund Has Been Initiated – Grab2Go #${order.order_number}`,
+      subject: `Your Grab2Go Order Cancellation & Refund Update – #${order.order_number}`,
       html: getBaseLayout({
-        title: `Your Refund Has Been Initiated – Grab2Go #${order.order_number}`,
-        preheader: `Refund of ${formatCurrency(refundAmt)} initiated for order #${order.order_number}`,
+        title: `Your Grab2Go Order Cancellation & Refund Update`,
+        preheader: `Refund of ${formatCurrency(refundAmt)} initiated for cancelled order #${order.order_number}`,
         content,
         ctaUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`,
         ctaText: 'Track Live Refund Status'
       }),
-      text: `Your refund of ${formatCurrency(refundAmt)} for order #${order.order_number} has been initiated.`
+      text: `Your refund request of ${formatCurrency(refundAmt)} for Grab2Go order #${order.order_number} has been initiated successfully. The amount will be credited according to your bank or payment provider's processing timeline.`
     };
   }
 
   if (type === 'PROCESSED') {
+    const settlementDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' });
+
     const content = `
       <!-- Top Hero Status Card -->
       <div style="background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border: 1px solid #A7F3D0; border-radius: 20px; padding: 24px; text-align: center; margin-bottom: 24px;">
@@ -659,59 +681,79 @@ const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) =
           ✓
         </div>
         <h1 style="font-size: 22px; font-weight: 900; color: #064E3B; margin: 0 0 6px 0; letter-spacing: -0.5px;">
-          Refund Successfully Processed
+          Your Grab2Go Refund Has Been Credited!
         </h1>
         <p style="font-size: 13px; color: #065F46; margin: 0; font-weight: 700;">
-          Settled for Order <span style="font-family: monospace;">#${escapeHtml(order.order_number)}</span>
+          Order ID: <span style="font-family: monospace;">#${escapeHtml(order.order_number)}</span> &bull; ${escapeHtml(restaurantName)}
         </p>
       </div>
 
-      <p style="font-size: 14px; color: #555555; margin: 0 0 20px 0; line-height: 1.6;">
-        Hi <strong>${escapeHtml(order.customer_name)}</strong>, the payment gateway has successfully settled your refund. The funds are cleared and on their way to your account:
+      <p style="font-size: 14px; color: #555555; margin: 0 0 16px 0; line-height: 1.6;">
+        Hi <strong>${escapeHtml(order.customer_name)}</strong>,
+      </p>
+      <p style="font-size: 14px; color: #065F46; margin: 0 0 20px 0; line-height: 1.6; font-weight: 600; background-color: #F0FDF4; border-left: 4px solid #10B981; padding: 12px 16px; border-radius: 8px;">
+        Good news! Your refund of <strong>${formatCurrency(refundAmt)}</strong> for Grab2Go order <strong>#${escapeHtml(order.order_number)}</strong> has been successfully processed. The refund has been credited to your original payment method, subject to the confirmation provided by your payment provider.
       </p>
 
       <div style="background-color: #FFFFFF; border: 1px solid #A7F3D0; border-radius: 18px; padding: 22px; margin-bottom: 24px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.08);">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="line-height: 2.2; font-size: 13px;">
           <tr>
-            <td style="color: #757575; font-weight: 600;">Processed Amount:</td>
+            <td style="color: #757575; font-weight: 600;">Restaurant:</td>
+            <td align="right" style="font-weight: 800; color: #252525;">${escapeHtml(restaurantName)}</td>
+          </tr>
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Original Payment Amount:</td>
+            <td align="right" style="font-weight: 700; color: #252525;">${formatCurrency(originalPaymentAmt)}</td>
+          </tr>
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Refunded Amount:</td>
             <td align="right" style="font-size: 20px; font-weight: 900; color: #047857;">
               ${formatCurrency(refundAmt)}
             </td>
           </tr>
           <tr>
-            <td style="color: #757575; font-weight: 600;">Gateway Status:</td>
+            <td style="color: #757575; font-weight: 600;">Refund Status:</td>
             <td align="right">
               <span style="background-color: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; padding: 3px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; text-transform: uppercase;">
-                ✓ Settled &bull; Processed
+                ✓ Refund Credited
               </span>
             </td>
           </tr>
-          ${refund?.provider_refund_id || refund?.razorpay_refund_id ? `
-            <tr>
-              <td style="color: #757575; font-weight: 600;">Bank ARN / Reference ID:</td>
-              <td align="right" style="font-family: monospace; font-size: 12px; font-weight: 800; color: #064E3B;">
-                ${escapeHtml(refund.provider_refund_id || refund.razorpay_refund_id)}
-              </td>
-            </tr>
-          ` : ''}
           <tr>
-            <td style="color: #757575; font-weight: 600;">Settlement Date:</td>
-            <td align="right" style="font-weight: 700; color: #252525;">${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' })}</td>
+            <td style="color: #757575; font-weight: 600;">Refund Reference ID:</td>
+            <td align="right" style="font-family: monospace; font-size: 12px; font-weight: 800; color: #064E3B;">
+              ${escapeHtml(refundRefId)}
+            </td>
+          </tr>
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Original Payment Method:</td>
+            <td align="right" style="font-weight: 700; color: #252525;">${escapeHtml(paymentMethod)}</td>
+          </tr>
+          <tr>
+            <td style="color: #757575; font-weight: 600;">Refund Completion Date:</td>
+            <td align="right" style="font-weight: 700; color: #252525;">${escapeHtml(settlementDate)}</td>
           </tr>
         </table>
       </div>
+
+      <!-- Cancelled Items Summary -->
+      ${renderItemsTable(order.order_items)}
+
+      <p style="font-size: 12px; color: #757575; margin: 20px 0 10px 0; line-height: 1.5;">
+        Customer Support: If you do not see the credit reflect in your account statement, please contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color: #E50914; font-weight: 700; text-decoration: none;">${SUPPORT_EMAIL}</a> with Refund Ref: <strong>${escapeHtml(refundRefId)}</strong>.
+      </p>
     `;
 
     return {
-      subject: `Your Grab2GO Refund Has Been Processed – #${order.order_number}`,
+      subject: `Your Grab2Go Refund Has Been Credited! – #${order.order_number}`,
       html: getBaseLayout({
-        title: `Your Refund Has Been Processed – Grab2Go #${order.order_number}`,
-        preheader: `Refund of ${formatCurrency(refundAmt)} settled for order #${order.order_number}`,
+        title: `Your Grab2Go Refund Has Been Credited!`,
+        preheader: `Refund of ${formatCurrency(refundAmt)} credited for order #${order.order_number}`,
         content,
         ctaUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`,
         ctaText: 'View Refund Details'
       }),
-      text: `Your refund of ${formatCurrency(refundAmt)} for order #${order.order_number} has been processed.`
+      text: `Good news! Your refund of ${formatCurrency(refundAmt)} for Grab2Go order #${order.order_number} has been successfully processed. The refund has been credited to your original payment method, subject to the confirmation provided by your payment provider.`
     };
   }
 
@@ -726,30 +768,62 @@ const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) =
         Update Regarding Your Refund
       </h1>
       <p style="font-size: 13px; color: #9F1239; margin: 0; font-weight: 700;">
-        Order ID: #${escapeHtml(order.order_number)}
+        Order ID: #${escapeHtml(order.order_number)} &bull; ${escapeHtml(restaurantName)}
       </p>
     </div>
 
-    <p style="font-size: 14px; color: #555555; margin: 0 0 20px 0; line-height: 1.6;">
-      Hi <strong>${escapeHtml(order.customer_name)}</strong>, our automated gateway encountered a transient delay while clearing your refund of <strong>${formatCurrency(refundAmt)}</strong>.
+    <p style="font-size: 14px; color: #555555; margin: 0 0 16px 0; line-height: 1.6;">
+      Hi <strong>${escapeHtml(order.customer_name)}</strong>,
     </p>
+    <p style="font-size: 14px; color: #555555; margin: 0 0 20px 0; line-height: 1.6;">
+      Our automated gateway encountered a transient delay while clearing your refund of <strong>${formatCurrency(refundAmt)}</strong>.
+    </p>
+
+    <!-- Details Card -->
+    <div style="background-color: #FFFFFF; border: 1px solid #FECDD3; border-radius: 18px; padding: 20px; margin-bottom: 20px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="line-height: 2.2; font-size: 13px;">
+        <tr>
+          <td style="color: #757575; font-weight: 600;">Restaurant:</td>
+          <td align="right" style="font-weight: 800; color: #252525;">${escapeHtml(restaurantName)}</td>
+        </tr>
+        <tr>
+          <td style="color: #757575; font-weight: 600;">Attempted Refund Amount:</td>
+          <td align="right" style="font-size: 16px; font-weight: 900; color: #BE123C;">${formatCurrency(refundAmt)}</td>
+        </tr>
+        <tr>
+          <td style="color: #757575; font-weight: 600;">Current Status:</td>
+          <td align="right">
+            <span style="background-color: #FEE2E2; color: #991B1B; border: 1px solid #FECDD3; padding: 3px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; text-transform: uppercase;">
+              Refund Under Manual Review
+            </span>
+          </td>
+        </tr>
+      </table>
+    </div>
 
     <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 16px; padding: 18px 20px; margin-bottom: 24px; font-size: 13px; color: #92400E; line-height: 1.6;">
       <strong style="color: #78350F; font-size: 14px; display: block; margin-bottom: 4px;">Manual Review Underway</strong>
-      Our finance desk is actively reviewing this transaction with Razorpay. <strong>No action is needed from your side.</strong> We will ensure your refund is credited without issue.
+      Our finance desk is actively reviewing this transaction with Razorpay. <strong>No action is needed from your side.</strong> We will ensure your refund is credited directly to your bank account without issue.
     </div>
+
+    <!-- Cancelled Items Summary -->
+    ${renderItemsTable(order.order_items)}
+
+    <p style="font-size: 12px; color: #757575; margin: 20px 0 10px 0; line-height: 1.5;">
+      If you have questions, please reach our dedicated support desk at <a href="mailto:${SUPPORT_EMAIL}" style="color: #E50914; font-weight: 700; text-decoration: none;">${SUPPORT_EMAIL}</a>.
+    </p>
   `;
 
   return {
-    subject: `Update Regarding Your Grab2GO Refund – #${order.order_number}`,
+    subject: `Update Regarding Your Grab2Go Refund – #${order.order_number}`,
     html: getBaseLayout({
-      title: `Refund Update – Grab2GO #${order.order_number}`,
+      title: `Refund Update – Grab2Go #${order.order_number}`,
       preheader: `Update regarding your refund for order #${order.order_number}`,
       content,
       ctaUrl: `mailto:${SUPPORT_EMAIL}`,
       ctaText: 'Contact Support Desk'
     }),
-    text: `Your refund for order #${order.order_number} is being manually reviewed by our support team.`
+    text: `Your refund for Grab2Go order #${order.order_number} is being manually reviewed by our support team.`
   };
 };
 

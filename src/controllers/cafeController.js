@@ -158,6 +158,15 @@ const updatePaymentAccount = async (req, res, next) => {
   }
 };
 
+const getAdminBankVerifications = async (req, res, next) => {
+  try {
+    const result = await cafeService.getAdminBankVerifications(req.query);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 module.exports = {
   createCafe,
@@ -172,6 +181,7 @@ module.exports = {
   updateBusinessHours,
   getPaymentAccount,
   updatePaymentAccount,
+  getAdminBankVerifications,
   getCategories,
 };
 

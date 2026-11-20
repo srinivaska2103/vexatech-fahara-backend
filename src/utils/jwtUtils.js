@@ -16,8 +16,18 @@ const verifyToken = (token) => {
   }
 };
 
+const verifyTokenWithReason = (token) => {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return { decoded };
+  } catch (error) {
+    return { decoded: null, error: error.message };
+  }
+};
+
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
   verifyToken,
+  verifyTokenWithReason,
 };

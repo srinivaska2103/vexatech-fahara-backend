@@ -80,7 +80,8 @@ const updateBookingStatus = async (req, res, next) => {
 const cancelBooking = async (req, res, next) => {
   try {
     const roleName = req.user.roles?.name || req.user.role;
-    const result = await bookingService.cancelBooking(req.params.id, req.user.id, roleName);
+    const reason = req.body?.reason || req.query?.reason || 'Cancelled by customer';
+    const result = await bookingService.cancelBooking(req.params.id, req.user.id, roleName, reason);
     res.status(200).json({ success: true, data: result, message: 'Booking cancelled successfully' });
   } catch (error) {
     next(error);

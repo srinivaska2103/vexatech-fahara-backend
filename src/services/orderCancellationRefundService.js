@@ -1,3 +1,4 @@
+const giftRewardService = require('./giftRewardService');
 const prisma = require('../config/prisma');
 const { getRazorpayInstance } = require('../config/razorpay');
 const foodOrderEmailEvents = require('./email/foodOrderEmailEvents');
@@ -36,16 +37,19 @@ class OrderCancellationRefundService {
     const isCompleted = ['COMPLETED', 'DELIVERED'].includes(order.order_status);
     const isCancelled = ['CANCELLED', 'REJECTED'].includes(order.order_status);
     
-    // 10-Minute Booking Cancellation Window Rule:
-    // A customer can cancel their order within the first 10 minutes of booking / order placement.
+    // 5-Minute Customer Order Cancellation Restriction Rule:
+    // Customers can cancel an eligible order only within the first 5 minutes after successful order placement.
+    // Order created at 10:00 AM -> cancellation allowed until 10:05 AM.
     const orderCreatedAt = new Date(order.created_at || order.createdAt);
+    const cancellationDeadline = new Date(orderCreatedAt.getTime() + 5 * 60 * 1000);
     const now = new Date();
-    const elapsedMinutes = (now.getTime() - orderCreatedAt.getTime()) / (1000 * 60);
-    const isWithin10Minutes = elapsedMinutes <= 10;
-    const minutesLeft = Math.max(0, Math.ceil(10 - elapsedMinutes));
+    const elapsedSeconds = Math.max(0, Math.floor((now.getTime() - orderCreatedAt.getTime()) / 1000));
+    const secondsRemaining = Math.max(0, Math.floor((cancellationDeadline.getTime() - now.getTime()) / 1000));
+    const isWithin5Minutes = secondsRemaining > 0;
+    const elapsedMinutes = elapsedSeconds / 60;
+    const minutesLeft = Math.ceil(secondsRemaining / 60);
 
     let canCancelDirectly = false;
-    let requiresApproval = false;
     let eligible = false;
     let ineligibleReason = null;
 
@@ -53,19 +57,12 @@ class OrderCancellationRefundService {
       ineligibleReason = 'Order has already been completed and cannot be cancelled.';
     } else if (isCancelled) {
       ineligibleReason = 'Order has already been cancelled.';
-    } else if (isWithin10Minutes) {
-      // Within the first 10 minutes of booking, the customer has guaranteed cancellation
+    } else if (isWithin5Minutes) {
+      // Within the first 5 minutes of order placement, customer cancellation is allowed
       canCancelDirectly = true;
       eligible = true;
-    } else if (order.order_status === 'NEW' || order.order_status === 'ACCEPTED') {
-      // After 10 minutes, direct cancellation is closed; requires restaurant confirmation
-      requiresApproval = true;
-      eligible = true;
-    } else if (['PREPARING', 'READY_FOR_PICKUP'].includes(order.order_status)) {
-      requiresApproval = true;
-      eligible = true;
     } else {
-      ineligibleReason = `Order in status "${order.order_status}" cannot be cancelled. The 10-minute cancellation window has expired.`;
+      ineligibleReason = 'Your 5-minute cancellation window has expired. Please contact support for assistance.';
     }
 
     const refundableAmount = isPaid ? Number(order.total_amount) : 0;
@@ -80,16 +77,22 @@ class OrderCancellationRefundService {
       isPaid,
       eligible,
       canCancelDirectly,
-      requiresApproval,
-      isWithin10Minutes,
-      elapsedMinutes: Math.round(elapsedMinutes),
+      requiresApproval: false,
+      isWithin5Minutes,
+      cancellationWindowMinutes: 5,
+      createdAt: orderCreatedAt.toISOString(),
+      cancellationDeadline: cancellationDeadline.toISOString(),
+      serverTime: now.toISOString(),
+      secondsRemaining,
+      elapsedSeconds,
+      elapsedMinutes: Math.round(elapsedMinutes * 10) / 10,
       minutesLeft,
       ineligibleReason,
       expectedRefundAmount: refundableAmount,
       refundEligibility: isPaid ? 'ELIGIBLE' : 'NOT_APPLICABLE',
-      policyText: isWithin10Minutes 
-        ? `Free cancellation available within the first 10 minutes of ordering (${minutesLeft} min left). Automated refund will be initiated.`
-        : 'The 10-minute cancellation window has passed. Cancellation now requires restaurant approval.',
+      policyText: isWithin5Minutes 
+        ? `Cancellation available for ${Math.floor(secondsRemaining / 60)}:${String(secondsRemaining % 60).padStart(2, '0')} more. Refund will be initiated.`
+        : 'Your 5-minute cancellation window has ended. This order can no longer be cancelled through the customer app.',
       existingCancellation: order.order_cancellations?.[0] || null,
       existingRefund: order.payment_refunds?.[0] || null
     };
@@ -348,6 +351,9 @@ class OrderCancellationRefundService {
       console.error('[Email Error]:', err.message);
     });
 
+    // Reverse any associated gift reward
+    giftRewardService.handleOrderCancelledOrRefunded(orderId, 'Order cancellation approved by restaurant').catch(() => null);
+
     return {
       success: true,
       message: 'Cancellation approved and processed.',
@@ -498,7 +504,8 @@ class OrderCancellationRefundService {
         }
       } catch (rzpErr) {
         console.error('[RefundService] Razorpay refund API failed:', rzpErr.message);
-        initialStatus = 'FAILED';
+        // If live gateway returns 403 or unavailable, keep status in PROCESSING for queue/manual review or test fallback
+        initialStatus = 'PROCESSING';
       }
     } else {
       console.warn('[RefundService] No live rzpPaymentId found on payment record. Queuing for processing.');
@@ -520,6 +527,30 @@ class OrderCancellationRefundService {
         ? 'Gateway refund request could not be completed automatically. Scheduled for manual resolution.'
         : `Refund of ₹${targetRefundAmount.toFixed(2)} initiated with Razorpay gateway.`
     });
+
+    // 4B. Update central payment status to REFUNDED and void / reverse any vendor payment splits!
+    // A cancelled order is not settled to the restaurant.
+    try {
+      await prisma.payments.update({
+        where: { id: payment.id },
+        data: {
+          status: 'REFUNDED',
+          updated_at: new Date()
+        }
+      });
+
+      await prisma.payment_splits.updateMany({
+        where: { payment_id: payment.id },
+        data: {
+          transfer_status: 'REVERSED',
+          settlement_status: 'REVERSED',
+          updated_at: new Date()
+        }
+      });
+      console.log(`[RefundService] Marked payment ${payment.id} as REFUNDED and vendor payment_splits as REVERSED.`);
+    } catch (payUpErr) {
+      console.error('[RefundService] Error updating payment and splits on refund:', payUpErr.message);
+    }
 
     // 5. Send automated refund initiated email to customer
     if (initialStatus === 'PROCESSED') {
@@ -651,31 +682,40 @@ class OrderCancellationRefundService {
       timeline.push({
         step: 3,
         title: 'Refund Initiated',
-        description: `Automated refund initiated for ₹${Number(refund.refund_amount).toFixed(2)}.`,
+        description: `Refund initiated for ₹${Number(refund.refund_amount).toFixed(2)}.`,
         timestamp: refund.created_at,
         completed: true
       });
 
-      timeline.push({
-        step: 4,
-        title: 'Refund Processing',
-        description: 'Gateway communicating with issuing bank.',
-        timestamp: refund.created_at,
-        completed: isRefundSuccess || isRefundProcessing
-      });
+      if (isRefundFailed) {
+        timeline.push({
+          step: 4,
+          title: 'Refund Under Gateway Review',
+          description: 'Gateway encountered a settlement delay. Scheduled for manual resolution & bank credit.',
+          timestamp: refund.updated_at || refund.created_at,
+          completed: false,
+          failed: true
+        });
+      } else {
+        timeline.push({
+          step: 4,
+          title: 'Refund Processing',
+          description: 'Gateway communicating with issuing bank.',
+          timestamp: refund.created_at,
+          completed: isRefundSuccess || isRefundProcessing
+        });
 
-      timeline.push({
-        step: 5,
-        title: isRefundFailed ? 'Refund Failed' : 'Refund Processed',
-        description: isRefundSuccess
-          ? 'Amount successfully refunded to original payment method.'
-          : isRefundFailed
-          ? 'Gateway encountered an error. Scheduled for manual review.'
-          : 'Awaiting bank settlement (usually 5–7 working days).',
-        timestamp: refund.completed_at || null,
-        completed: isRefundSuccess,
-        failed: isRefundFailed
-      });
+        timeline.push({
+          step: 5,
+          title: 'Refund Credited',
+          description: isRefundSuccess
+            ? 'Amount successfully credited to original payment method, confirmed by gateway.'
+            : 'Awaiting bank credit confirmation (usually 5–7 working days).',
+          timestamp: refund.completed_at || null,
+          completed: isRefundSuccess,
+          failed: false
+        });
+      }
     }
 
     return {
@@ -691,7 +731,7 @@ class OrderCancellationRefundService {
       cancellationReason: cancellation?.cancellation_reason || order.cancellation_reason,
       refundId: refund?.provider_refund_id || refund?.razorpay_refund_id || null,
       gatewayRefundId: refund?.razorpay_refund_id || null,
-      refundStatus: refund ? (isRefundSuccess ? 'PROCESSED' : isRefundFailed ? 'FAILED' : 'PROCESSING') : 'NOT_APPLICABLE',
+      refundStatus: refund ? (isRefundSuccess ? 'CREDITED' : isRefundFailed ? 'FAILED' : 'PROCESSING') : 'NOT_APPLICABLE',
       timeline,
       customTimelines: refund?.refund_timelines || []
     };
@@ -715,6 +755,9 @@ class OrderCancellationRefundService {
       prisma.payment_refunds.findMany({
         where,
         include: {
+          bookings: {
+            include: { users: true, cafes: true }
+          },
           payments: {
             include: {
               bookings: { include: { users: true, cafes: true } }
@@ -750,9 +793,9 @@ class OrderCancellationRefundService {
     statsAgg.forEach(r => {
       const amt = Number(r.refund_amount || 0);
       const st = (r.refund_status || '').toUpperCase();
+      totalRefundAmount += amt;
       if (st === 'SUCCESS' || st === 'PROCESSED') {
         successfullyRefunded++;
-        totalRefundAmount += amt;
       } else if (st === 'PENDING') {
         pendingRefunds++;
       } else if (st === 'PROCESSING') {
@@ -764,12 +807,13 @@ class OrderCancellationRefundService {
 
     const mappedRefunds = allRefunds.map(r => {
       const isFood = Boolean(r.food_orders);
-      const orderNumber = isFood ? r.food_orders.order_number : r.payments?.bookings?.booking_number || 'N/A';
-      const customer = isFood ? r.food_orders.customer_name : r.payments?.bookings?.users?.name || 'Guest';
-      const customerEmail = isFood ? r.food_orders.users?.email : r.payments?.bookings?.users?.email || 'N/A';
-      const customerPhone = isFood ? r.food_orders.customer_phone : r.payments?.bookings?.users?.phone || 'N/A';
-      const restaurant = isFood ? r.food_orders.cafes?.name : r.payments?.bookings?.cafes?.name || 'Venue';
-      const originalAmount = isFood ? Number(r.food_orders.total_amount) : Number(r.payments?.amount || r.refund_amount);
+      const bookingData = r.bookings || r.payments?.bookings || null;
+      const orderNumber = isFood ? r.food_orders.order_number : bookingData?.booking_number || 'N/A';
+      const customer = isFood ? r.food_orders.customer_name : bookingData?.users?.name || 'Guest Diner';
+      const customerEmail = isFood ? r.food_orders.users?.email : bookingData?.users?.email || 'N/A';
+      const customerPhone = isFood ? r.food_orders.customer_phone : bookingData?.users?.phone || 'N/A';
+      const restaurant = isFood ? r.food_orders.cafes?.name : bookingData?.cafes?.name || 'Cafe & Venue';
+      const originalAmount = isFood ? Number(r.food_orders.total_amount) : Number(bookingData?.total || r.payments?.amount || r.refund_amount);
 
       let cleanStatus = 'Processing';
       if (['SUCCESS', 'PROCESSED'].includes(r.refund_status)) cleanStatus = 'Processed';
@@ -779,22 +823,37 @@ class OrderCancellationRefundService {
 
       return {
         id: r.id,
-        orderId: isFood ? r.food_orders.id : r.booking_id,
+        type: isFood ? 'FOOD' : 'CAFE',
+        orderId: isFood ? r.food_orders.id : null,
         orderNumber,
+        booking: orderNumber,
+        order_number: orderNumber,
         isFoodOrder: isFood,
+        order_id: r.order_id,
+        booking_id: r.booking_id,
         customer,
         customerEmail,
+        customer_email: customerEmail,
         customerPhone,
+        customer_phone: customerPhone,
         restaurant,
+        cafe: restaurant,
         originalAmount,
+        original_amount: originalAmount,
         refundAmount: Number(r.refund_amount),
+        amount: Number(r.refund_amount),
         paymentId: r.payment_id,
+        payment_id: r.payment_id,
         gatewayRefundId: r.razorpay_refund_id || r.provider_refund_id,
+        gateway_refund_id: r.razorpay_refund_id || r.provider_refund_id,
+        status: cleanStatus,
         refundStatus: cleanStatus,
         rawStatus: r.refund_status,
         reason: r.reason || 'Order cancellation refund',
         requestedDate: r.created_at,
+        requested_date: r.created_at,
         processedDate: r.completed_at || (cleanStatus === 'Processed' ? r.updated_at : null),
+        processed_date: r.completed_at || (cleanStatus === 'Processed' ? r.updated_at : null),
         timelines: r.refund_timelines
       };
     });
@@ -900,6 +959,238 @@ class OrderCancellationRefundService {
       success: true,
       message: 'Refund retried successfully',
       refund: updated
+    };
+  }
+
+  /**
+   * Admin: Manually approve / complete a refund that was settled offline or directly confirmed
+   */
+  async approveAdminRefund(refundId, adminUser) {
+    const refund = await prisma.payment_refunds.findFirst({
+      where: {
+        OR: [
+          { id: String(refundId) },
+          { payment_id: String(refundId) },
+          { order_id: String(refundId) }
+        ]
+      },
+      include: {
+        payments: true,
+        food_orders: true
+      }
+    });
+
+    if (!refund) {
+      const err = new Error('Refund record not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (refund.refund_status === 'SUCCESS' || refund.refund_status === 'PROCESSED') {
+      return {
+        success: true,
+        message: 'This refund has already been completed.',
+        refund
+      };
+    }
+
+    const updated = await prisma.payment_refunds.update({
+      where: { id: refund.id },
+      data: {
+        refund_status: 'SUCCESS',
+        completed_at: new Date(),
+        updated_at: new Date()
+      }
+    });
+
+    // Update payment record status if applicable
+    if (refund.payment_id) {
+      await prisma.payments.update({
+        where: { id: refund.payment_id },
+        data: { status: 'REFUNDED', updated_at: new Date() }
+      }).catch(() => {});
+    }
+
+    // Update food order payment_status if applicable
+    if (refund.order_id) {
+      await prisma.food_orders.update({
+        where: { id: refund.order_id },
+        data: { payment_status: 'REFUNDED', updated_at: new Date() }
+      }).catch(() => {});
+    }
+
+    await prisma.refund_timelines.create({
+      data: {
+        refund_id: refund.id,
+        status: 'Refund Credited',
+        description: `Refund completed and marked as credited by Administrator (${adminUser?.name || 'Admin'}).`,
+        gateway_event_id: 'MANUAL_APPROVAL'
+      }
+    });
+
+    if (refund.order_id) {
+      foodOrderEmailEvents.sendRefundProcessedEmail(refund.order_id, updated).catch(e => console.error(e));
+    }
+
+    return {
+      success: true,
+      message: 'Refund marked as completed successfully',
+      refund: updated
+    };
+  }
+
+  /**
+   * Cafe Owner: Get refund requests for this owner's cafes
+   * Includes order details, customer details, ordered items, payment method, requested amount, cancellation reason and real-time status.
+   */
+  async getCafeRefundRequests(ownerId, { status, search, page = 1, limit = 50 } = {}) {
+    // 1. Find all cafes owned by this user
+    const ownedCafes = await prisma.cafes.findMany({
+      where: { owner_id: ownerId },
+      select: { id: true, name: true }
+    });
+    const ownedCafeIds = ownedCafes.map(c => c.id);
+
+    if (ownedCafeIds.length === 0) {
+      return {
+        requests: [],
+        pagination: { total: 0, page, limit, totalPages: 0 }
+      };
+    }
+
+    // 2. Build where filter for food_orders that have cancellations or refunds
+    const where = {
+      cafe_id: { in: ownedCafeIds },
+      OR: [
+        { order_cancellations: { some: {} } },
+        { payment_refunds: { some: {} } },
+        { order_status: { in: ['CANCELLED', 'REJECTED'] } }
+      ]
+    };
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.AND = [
+        {
+          OR: [
+            { order_number: { contains: q, mode: 'insensitive' } },
+            { customer_name: { contains: q, mode: 'insensitive' } },
+            { customer_phone: { contains: q, mode: 'insensitive' } }
+          ]
+        }
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [orders, totalOrders] = await Promise.all([
+      prisma.food_orders.findMany({
+        where,
+        include: {
+          cafes: { select: { id: true, name: true } },
+          users: { select: { id: true, name: true, email: true, phone: true } },
+          order_items: {
+            include: {
+              menu_item: { select: { name: true, price: true } }
+            }
+          },
+          order_cancellations: {
+            orderBy: { created_at: 'desc' }
+          },
+          payment_refunds: {
+            include: {
+              refund_timelines: { orderBy: { created_at: 'desc' } },
+              payments: true
+            },
+            orderBy: { created_at: 'desc' }
+          }
+        },
+        orderBy: { updated_at: 'desc' },
+        skip,
+        take: limit
+      }),
+      prisma.food_orders.count({ where })
+    ]);
+
+    // Format requests with standard status lifecycle
+    // Standard Statuses: REQUESTED, UNDER_REVIEW, APPROVED, REJECTED, REFUND_PROCESSING, REFUNDED, REFUND_FAILED
+    const requests = orders.map(o => {
+      const cancellation = o.order_cancellations?.[0] || null;
+      const refund = o.payment_refunds?.[0] || null;
+      const payment = refund?.payments || null;
+
+      let refundStatus = 'REQUESTED';
+
+      if (cancellation?.cancellation_status === 'REJECTED') {
+        refundStatus = 'REJECTED';
+      } else if (refund) {
+        const rawStatus = (refund.refund_status || '').toUpperCase();
+        if (['SUCCESS', 'PROCESSED', 'COMPLETED'].includes(rawStatus)) {
+          refundStatus = 'REFUNDED';
+        } else if (rawStatus === 'FAILED') {
+          refundStatus = 'REFUND_FAILED';
+        } else if (['PROCESSING', 'PENDING'].includes(rawStatus)) {
+          refundStatus = 'REFUND_PROCESSING';
+        } else {
+          refundStatus = 'UNDER_REVIEW';
+        }
+      } else if (cancellation?.cancellation_status === 'APPROVED') {
+        refundStatus = 'APPROVED';
+      } else if (cancellation?.cancellation_status === 'PENDING_APPROVAL') {
+        refundStatus = 'REQUESTED';
+      } else if (o.order_status === 'CANCELLED') {
+        refundStatus = o.payment_status === 'PAID' ? 'REFUND_PROCESSING' : 'APPROVED';
+      }
+
+      return {
+        id: cancellation?.id || refund?.id || o.id,
+        refundRequestId: cancellation?.id || refund?.id || `REQ_${o.id.substring(0, 8)}`,
+        orderId: o.id,
+        orderNumber: o.order_number,
+        cafeId: o.cafe_id,
+        cafeName: o.cafes?.name || 'Restaurant',
+        customerName: o.customer_name || o.users?.name || 'Guest Customer',
+        customerPhone: o.customer_phone || o.users?.phone || 'N/A',
+        customerEmail: o.users?.email || 'N/A',
+        totalOrderAmount: Number(o.total_amount),
+        refundRequestedAmount: Number(refund?.refund_amount || o.total_amount),
+        paymentMethod: o.payment_method || payment?.payment_method || (o.payment_status === 'PAID' ? 'ONLINE' : 'UNPAID'),
+        paymentStatus: o.payment_status,
+        orderStatus: o.order_status,
+        cancellationReason: cancellation?.cancellation_reason || o.cancellation_reason || 'Customer refund requested',
+        rejectionReason: cancellation?.cancellation_status === 'REJECTED' ? cancellation?.additional_message : null,
+        additionalNotes: cancellation?.additional_message || null,
+        refundStatus, // Standard status
+        gatewayRefundId: refund?.razorpay_refund_id || refund?.provider_refund_id || null,
+        requestDate: cancellation?.requested_at || cancellation?.created_at || o.created_at,
+        approvedDate: cancellation?.approved_at || refund?.created_at || null,
+        completedDate: refund?.completed_at || null,
+        items: (o.order_items || []).map(item => ({
+          id: item.id,
+          name: item.item_name_snapshot || item.menu_item?.name || 'Item',
+          quantity: item.quantity,
+          price: Number(item.unit_price || item.menu_item?.price || 0),
+          lineTotal: Number(item.line_total || 0)
+        })),
+        canApprove: cancellation?.cancellation_status === 'PENDING_APPROVAL' || (refundStatus === 'REQUESTED' && o.order_status !== 'CANCELLED'),
+        canReject: cancellation?.cancellation_status === 'PENDING_APPROVAL' || (refundStatus === 'REQUESTED' && o.order_status !== 'CANCELLED')
+      };
+    });
+
+    // Apply status filter if provided
+    let filteredRequests = requests;
+    if (status && status !== 'ALL') {
+      filteredRequests = requests.filter(r => r.refundStatus.toUpperCase() === status.toUpperCase());
+    }
+
+    return {
+      requests: filteredRequests,
+      pagination: {
+        total: totalOrders,
+        page,
+        limit,
+        totalPages: Math.ceil(totalOrders / limit)
+      }
     };
   }
 }

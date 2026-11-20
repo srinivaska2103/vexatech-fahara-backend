@@ -609,27 +609,99 @@ const processAdminRefund = async (paymentId) => {
   };
 };
 
-const getOwnerPayments = async (ownerId, query) => {
-  const payments = await paymentRepository.getOwnerPayments(ownerId);
+const getOwnerPayments = async (ownerId, query = {}) => {
+  const payments = await paymentRepository.getOwnerPayments(ownerId, query);
   
-  const formattedData = payments.map(p => ({
-    id: p.id,
-    booking_id: p.booking_id,
-    booking_number: p.bookings?.booking_number,
-    amount: (() => {
-      const b = p.bookings;
+  const formattedData = payments.map(p => {
+    const isFoodOrder = !p.booking_id;
+    const bookingNumber = isFoodOrder 
+      ? (p.food_order?.order_number || p.gateway_order_id || p.provider_order_id || 'FOOD_ORDER')
+      : (p.bookings?.booking_number || 'N/A');
+
+    // Find applicable vendor payment split if any
+    const splits = p.payment_splits || [];
+    const cafeSplit = splits.find(s => s.vendor_type === 'CAFE') || splits[0];
+    
+    // Check if order/booking was cancelled or refunded
+    const fo = p.food_order;
+    const b = p.bookings;
+    const isCancelledOrder = ['CANCELLED', 'REJECTED'].includes(String(fo?.order_status || b?.booking_status || '').toUpperCase());
+    const hasRefund = (p.payment_refunds && p.payment_refunds.length > 0) || (fo?.payment_refunds && fo?.payment_refunds.length > 0) || p.status === 'REFUNDED' || fo?.payment_status === 'REFUNDED';
+    
+    // Determine accurate payment status to display
+    let displayPaymentStatus = p.status;
+    if (isCancelledOrder || hasRefund) {
+      displayPaymentStatus = 'REFUNDED';
+    }
+
+    // Determine accurate settlement status
+    let settlementStatus = 'Pending';
+    if (isCancelledOrder || hasRefund) {
+      settlementStatus = 'Cancelled / Refunded';
+    } else if (cafeSplit) {
+      const rawSplitStatus = String(cafeSplit.settlement_status || '').toUpperCase();
+      const rawTransferStatus = String(cafeSplit.transfer_status || '').toUpperCase();
+      if (['SETTLED', 'COMPLETED', 'SUCCESS'].includes(rawSplitStatus) || rawTransferStatus === 'PROCESSED') {
+        settlementStatus = 'Settled';
+      } else if (['PROCESSING'].includes(rawSplitStatus) || rawTransferStatus === 'PROCESSING') {
+        settlementStatus = 'Processing';
+      } else if (['FAILED', 'REVERSED'].includes(rawSplitStatus) || rawTransferStatus === 'FAILED') {
+        settlementStatus = 'Failed';
+      } else {
+        settlementStatus = 'Pending';
+      }
+    } else if (p.payout_status) {
+      const rawPayout = String(p.payout_status).toUpperCase();
+      if (['COMPLETED', 'SETTLED', 'SUCCESS'].includes(rawPayout)) {
+        settlementStatus = 'Settled';
+      } else if (['PROCESSING'].includes(rawPayout)) {
+        settlementStatus = 'Processing';
+      } else {
+        settlementStatus = 'Pending';
+      }
+    }
+
+    const netAmount = (() => {
+      if (isFoodOrder) {
+        // For food orders, restaurant gets food subtotal minus discounts (pure food earning, without platform fee / gst / transaction fee)
+        if (fo && fo.subtotal !== undefined) {
+          return Math.max(0, Number(fo.subtotal || 0) - Number(fo.discount_amount || 0));
+        }
+        const splitAmount = cafeSplit?.split_amount;
+        if (splitAmount !== undefined && splitAmount !== null) {
+          return Number(splitAmount);
+        }
+        return Number(p.amount || 0);
+      }
       if (!b) return Number(p.amount || 0);
       const eventCharge = (b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0);
       return Number(b.subtotal || 0) - eventCharge;
-    })(),
-    status: p.status,
-    method: p.payment_gateway,
-    date: p.paid_at || p.bookings?.created_at,
-    booking_date: p.bookings?.booking_date || null,
-    payment_date: p.paid_at || p.created_at || null,
-    customer_name: p.bookings?.users?.name || 'Guest',
-    cafe_name: p.bookings?.cafes?.name
-  }));
+    })();
+
+    return {
+      id: p.id,
+      booking_id: p.booking_id || p.food_order?.id || p.gateway_order_id,
+      bookingId: p.booking_id || p.food_order?.id || p.gateway_order_id,
+      booking_number: bookingNumber,
+      amount: netAmount,
+      cafeAmount: netAmount,
+      bookingAmount: netAmount,
+      status: displayPaymentStatus,
+      paymentStatus: displayPaymentStatus,
+      rawStatus: p.status,
+      isCancelled: isCancelledOrder,
+      isRefunded: Boolean(hasRefund),
+      settlementStatus,
+      settlement_status: settlementStatus,
+      method: p.payment_gateway,
+      date: p.paid_at || p.bookings?.created_at || p.created_at,
+      booking_date: p.bookings?.booking_date || null,
+      payment_date: p.paid_at || p.created_at || null,
+      customer_name: isFoodOrder ? (p._food_customer_name || 'Guest Diner') : (p.bookings?.users?.name || 'Guest'),
+      customerName: isFoodOrder ? (p._food_customer_name || 'Guest Diner') : (p.bookings?.users?.name || 'Guest'),
+      cafe_name: isFoodOrder ? (p._food_cafe_name || 'Restaurant') : (p.bookings?.cafes?.name || 'Venue')
+    };
+  });
 
   return {
     data: formattedData,
@@ -645,24 +717,31 @@ const getOwnerInvoices = async (ownerId, query) => {
   const allPayments = await paymentRepository.getOwnerPayments(ownerId);
   const successfulPayments = allPayments.filter(p => p.status === 'SUCCESS' || p.status === 'PAID');
   
-  const mapped = successfulPayments.map(p => ({
-    id: p.id,
-    invoice_number: `INV-${p.id.substring(0, 8).toUpperCase()}`,
-    amount: (() => {
-      const b = p.bookings;
-      if (!b) return Number(p.amount || 0);
-      const eventCharge = (b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0);
-      return Number(b.subtotal || 0) - eventCharge;
-    })(),
-    customer_name: p.bookings?.users?.name || 'Guest User',
-    created_at: p.paid_at || p.created_at,
-    status: p.status,
-    customer_email: p.bookings?.users?.email,
-    customer_phone: p.bookings?.users?.phone,
-    cafe_name: p.bookings?.cafes?.name,
-    cafe_address: p.bookings?.cafes?.address,
-    booking_id: p.bookings?.booking_number || p.booking_id
-  }));
+  const mapped = successfulPayments.map(p => {
+    const isFoodOrder = !p.booking_id;
+    const bookingRef = isFoodOrder 
+      ? (p.food_order?.order_number || p.gateway_order_id || p.provider_order_id)
+      : (p.bookings?.booking_number || p.booking_id);
+
+    return {
+      id: p.id,
+      invoice_number: `INV-${p.id.substring(0, 8).toUpperCase()}`,
+      amount: (() => {
+        const b = p.bookings;
+        if (!b) return Number(p.amount || 0);
+        const eventCharge = (b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0);
+        return Number(b.subtotal || 0) - eventCharge;
+      })(),
+      customer_name: isFoodOrder ? (p._food_customer_name || 'Guest Diner') : (p.bookings?.users?.name || 'Guest User'),
+      created_at: p.paid_at || p.created_at,
+      status: p.status,
+      customer_email: p.bookings?.users?.email || null,
+      customer_phone: p.bookings?.users?.phone || null,
+      cafe_name: isFoodOrder ? (p._food_cafe_name || 'Restaurant') : (p.bookings?.cafes?.name || 'Venue'),
+      cafe_address: p.bookings?.cafes?.address || '',
+      booking_id: bookingRef
+    };
+  });
 
   return {
     data: mapped,
@@ -675,7 +754,14 @@ const getOwnerInvoices = async (ownerId, query) => {
 };
 
 const getOwnerRefunds = async (ownerId, query) => {
-  // 1. Fetch recorded payment_refunds
+  // Find cafes owned by this user
+  const ownedCafes = await prisma.cafes.findMany({
+    where: { owner_id: ownerId },
+    select: { id: true }
+  });
+  const ownedCafeIds = ownedCafes.map(c => c.id);
+
+  // 1. Fetch recorded payment_refunds (both bookings and food orders)
   const dbRefunds = await prisma.payment_refunds.findMany({
     where: {
       OR: [
@@ -696,7 +782,14 @@ const getOwnerRefunds = async (ownerId, query) => {
               { event_services: { user_id: ownerId } }
             ]
           }
-        }
+        },
+        ...(ownedCafeIds.length > 0 ? [
+          {
+            food_orders: {
+              cafe_id: { in: ownedCafeIds }
+            }
+          }
+        ] : [])
       ]
     },
     include: {
@@ -707,6 +800,11 @@ const getOwnerRefunds = async (ownerId, query) => {
           event_services: true
         }
       },
+      food_orders: {
+        include: {
+          cafes: true
+        }
+      },
       payments: true
     },
     orderBy: { created_at: 'desc' }
@@ -714,11 +812,22 @@ const getOwnerRefunds = async (ownerId, query) => {
 
   const formattedDbRefunds = dbRefunds.map(r => {
     const b = r.bookings;
+    const fo = r.food_orders;
+    const isFoodOrder = !!fo;
     const isEventManager = b?.event_services?.user_id === ownerId;
-    const isCafeOwner = b?.cafes?.owner_id === ownerId;
+    const isCafeOwner = b?.cafes?.owner_id === ownerId || (fo && ownedCafeIds.includes(fo.cafe_id));
 
+    let refundAmountVal = Number(r.refund_amount || 0);
+    if (refundAmountVal === 0 && fo?.total_amount) {
+      refundAmountVal = Number(fo.total_amount);
+    }
     const ownerBaseAmount = (() => {
-      if (!b) return Number(r.refund_amount || 0);
+      if (isFoodOrder) {
+        // Pure food earning for refund adjustment, without platform fee / GST / transaction fee
+        const pureFoodAmount = Math.max(0, Number(fo.subtotal || 0) - Number(fo.discount_amount || 0));
+        return pureFoodAmount > 0 ? pureFoodAmount : (refundAmountVal || Number(fo.total_amount || 0));
+      }
+      if (!b) return refundAmountVal;
       if (isEventManager && !isCafeOwner) {
         return Number(b.event_service_amount || 0);
       }
@@ -729,9 +838,11 @@ const getOwnerRefunds = async (ownerId, query) => {
       return Number(b.subtotal || 0);
     })();
 
-    const totalCustomerAmount = Number(b?.total || r.payments?.amount || r.refund_amount || 0);
-    let netRefundAmount = Number(r.refund_amount || 0);
-    if (totalCustomerAmount > 0 && ownerBaseAmount > 0 && totalCustomerAmount >= ownerBaseAmount) {
+    const totalCustomerAmount = Number(b?.total || fo?.total_amount || r.payments?.amount || refundAmountVal || 0);
+    let netRefundAmount = refundAmountVal;
+    if (isFoodOrder) {
+      netRefundAmount = ownerBaseAmount > 0 ? ownerBaseAmount : refundAmountVal;
+    } else if (totalCustomerAmount > 0 && ownerBaseAmount > 0 && totalCustomerAmount >= ownerBaseAmount) {
       const ratio = netRefundAmount / totalCustomerAmount;
       netRefundAmount = ratio >= 0.99 ? ownerBaseAmount : Number((ratio * ownerBaseAmount).toFixed(2));
     }
@@ -740,22 +851,28 @@ const getOwnerRefunds = async (ownerId, query) => {
       'SUCCESS': 'Refunded',
       'REFUNDED': 'Refunded',
       'COMPLETED': 'Refunded',
-      'PENDING': 'Pending',
+      'PROCESSED': 'Refunded',
+      'PENDING': 'Processing',
       'PROCESSING': 'Processing',
+      'UNDER_REVIEW': 'Pending',
       'FAILED': 'Failed'
     };
-    const mappedStatus = statusMap[String(r.refund_status || '').toUpperCase()] || r.refund_status || 'Refunded';
+    const mappedStatus = statusMap[String(r.refund_status || '').toUpperCase()] || r.refund_status || 'Processing';
+
+    const identifier = isFoodOrder 
+      ? (fo.order_number || r.order_id || 'FOOD_ORDER')
+      : (b?.booking_number || r.booking_id || 'N/A');
 
     return {
       id: r.id,
-      bookingId: b?.booking_number || r.booking_id || 'N/A',
-      booking_id: b?.booking_number || r.booking_id || 'N/A',
-      customer: b?.users?.name || 'Guest Diner',
-      customer_name: b?.users?.name || 'Guest Diner',
+      bookingId: identifier,
+      booking_id: identifier,
+      customer: isFoodOrder ? (fo.customer_name || 'Guest Diner') : (b?.users?.name || 'Guest Diner'),
+      customer_name: isFoodOrder ? (fo.customer_name || 'Guest Diner') : (b?.users?.name || 'Guest Diner'),
       refundAmount: netRefundAmount,
       refund_amount: netRefundAmount,
       amount: netRefundAmount,
-      reason: r.reason || 'Booking cancellation refund',
+      reason: r.reason || (isFoodOrder ? 'Food order cancellation refund' : 'Booking cancellation refund'),
       status: mappedStatus,
       refund_status: mappedStatus,
       date: r.created_at || r.completed_at,
@@ -869,10 +986,22 @@ const getOwnerPayouts = async (ownerId, query) => {
     const status = p.payout_status === 'COMPLETED' || p.payout_status === 'SETTLED' ? 'COMPLETED' : (p.payout_status || 'PROCESSING');
 
     const b = p.bookings;
+    const isFoodOrder = !p.booking_id;
     const isEventManager = b?.event_services?.user_id === ownerId;
     const isCafeOwner = b?.cafes?.owner_id === ownerId;
 
     const amount = (() => {
+      if (isFoodOrder) {
+        const fo = p.food_order;
+        if (fo && fo.subtotal !== undefined) {
+          return Math.max(0, Number(fo.subtotal || 0) - Number(fo.discount_amount || 0));
+        }
+        const splitAmount = p.payment_splits?.[0]?.split_amount;
+        if (splitAmount !== undefined && splitAmount !== null) {
+          return Number(splitAmount);
+        }
+        return Number(p.amount || 0);
+      }
       if (!b) return Number(p.amount || 0);
       if (isEventManager && !isCafeOwner) {
         return Number(b.event_service_amount || b.subtotal || 0);
@@ -919,11 +1048,48 @@ const getOwnerPayouts = async (ownerId, query) => {
 };
 
 const getOwnerRevenueSummary = async (ownerId, query) => {
+  // Find cafes owned by this user
+  const ownedCafes = await prisma.cafes.findMany({
+    where: { owner_id: ownerId },
+    select: { id: true }
+  });
+  const ownedCafeIds = ownedCafes.map(c => c.id);
+
   const dbRefunds = await prisma.payment_refunds.findMany({
-    select: { payment_id: true, booking_id: true }
+    where: {
+      OR: [
+        {
+          payments: {
+            bookings: {
+              OR: [
+                { cafes: { owner_id: ownerId } },
+                { event_services: { user_id: ownerId } }
+              ]
+            }
+          }
+        },
+        {
+          bookings: {
+            OR: [
+              { cafes: { owner_id: ownerId } },
+              { event_services: { user_id: ownerId } }
+            ]
+          }
+        },
+        ...(ownedCafeIds.length > 0 ? [
+          {
+            food_orders: {
+              cafe_id: { in: ownedCafeIds }
+            }
+          }
+        ] : [])
+      ]
+    },
+    select: { payment_id: true, booking_id: true, order_id: true, refund_amount: true }
   });
   const refundedPaymentIds = new Set(dbRefunds.map(r => r.payment_id).filter(Boolean));
   const refundedBookingIds = new Set(dbRefunds.map(r => r.booking_id).filter(Boolean));
+  const totalDbRefundsAmount = dbRefunds.reduce((sum, r) => sum + Number(r.refund_amount || 0), 0);
 
   const allPayments = await paymentRepository.getOwnerPayments(ownerId);
   const successfulPayments = allPayments.filter(p => {
@@ -966,10 +1132,26 @@ const getOwnerRevenueSummary = async (ownerId, query) => {
 
   successfulPayments.forEach(p => {
     const b = p.bookings;
+    const isFoodOrder = !p.booking_id;
     const isEventManager = b?.event_services?.user_id === ownerId;
     const isCafeOwner = b?.cafes?.owner_id === ownerId;
 
+    const splits = p.payment_splits || [];
+    const cafeSplit = splits.find(s => s.vendor_type === 'CAFE') || splits[0];
+
     const amt = (() => {
+      if (isFoodOrder) {
+        // Pure food subtotal amount only (excluding grab2go platform fee, transaction fee, and gst)
+        const fo = p.food_order;
+        if (fo && fo.subtotal !== undefined) {
+          return Math.max(0, Number(fo.subtotal || 0) - Number(fo.discount_amount || 0));
+        }
+        const splitAmount = cafeSplit?.split_amount;
+        if (splitAmount !== undefined && splitAmount !== null) {
+          return Number(splitAmount);
+        }
+        return Number(p.amount || 0);
+      }
       if (!b) return Number(p.amount || 0);
       if (isEventManager && !isCafeOwner) {
         return Number(b.event_service_amount || b.subtotal || 0);
@@ -987,9 +1169,17 @@ const getOwnerRevenueSummary = async (ownerId, query) => {
     if (date >= startOfMonth) monthlyRevenue += amt;
     if (date >= startOfYear) ytdRevenue += amt;
 
-    // Check payout / settlement status from DB record
-    const isCompletedPayout = p.payout_status === 'COMPLETED' || p.payout_status === 'SETTLED';
-    if (isCompletedPayout) {
+    // Check payout / settlement status accurately from payment_splits or payout_status
+    let isSettled = false;
+    if (cafeSplit) {
+      const splitSt = String(cafeSplit.settlement_status || '').toUpperCase();
+      const transferSt = String(cafeSplit.transfer_status || '').toUpperCase();
+      isSettled = ['SETTLED', 'COMPLETED', 'SUCCESS'].includes(splitSt) || transferSt === 'PROCESSED';
+    } else if (p.payout_status) {
+      isSettled = ['COMPLETED', 'SETTLED', 'SUCCESS'].includes(String(p.payout_status).toUpperCase());
+    }
+
+    if (isSettled) {
       settledAmount += amt;
     } else {
       pendingSettlement += amt;
@@ -1016,12 +1206,16 @@ const getOwnerRevenueSummary = async (ownerId, query) => {
 
   const aov = successfulPayments.length > 0 ? totalRevenue / successfulPayments.length : 0;
   const successRate = allPayments.length > 0 ? (successfulPayments.length / allPayments.length) * 100 : 0;
-  const refundRate = allPayments.length > 0 ? (refundedPayments.length / allPayments.length) * 100 : 0;
-  const refundAmount = refundedPayments.reduce((sum, p) => {
+  const refundRate = allPayments.length > 0 ? ((refundedPayments.length + dbRefunds.length) / allPayments.length) * 100 : 0;
+  const refundAmountFromPayments = refundedPayments.reduce((sum, p) => {
     const b = p.bookings;
     const amt = b ? Number(b.subtotal || 0) - ((b.package_id && !b.event_service_id) ? 0 : Number(b.event_service_amount || 0)) : Number(p.amount || 0);
     return sum + amt;
   }, 0);
+  
+  // Total of all active refunds (both completed and processing/pending adjustments)
+  const allRefundsAmount = dbRefunds.reduce((sum, r) => sum + Number(r.refund_amount || 0), 0);
+  const finalRefundAmount = Math.max(allRefundsAmount, totalDbRefundsAmount, refundAmountFromPayments);
 
   return {
     data: {
@@ -1032,7 +1226,7 @@ const getOwnerRevenueSummary = async (ownerId, query) => {
       today_revenue: Math.round(todayRevenue),
       monthly_revenue: Math.round(monthlyRevenue),
       completed_count: successfulPayments.length,
-      refund_amount: Math.round(refundAmount),
+      refund_amount: Number(finalRefundAmount.toFixed(2)),
       ytd_revenue: Math.round(ytdRevenue),
       aov: Math.round(aov),
       success_rate: Number(successRate.toFixed(1)),
@@ -1216,6 +1410,27 @@ const getAdminPayouts = async (query) => {
     splitsMap.set(`${s.payment_id}:${s.vendor_type}`, s);
   }
 
+  // Also query food orders for payments without bookings
+  const paymentsWithoutBookings = successfulPayments.filter(p => !p.booking_id);
+  const foodOrdersList = paymentsWithoutBookings.length > 0 
+    ? await prisma.food_orders.findMany({
+        where: {
+          OR: [
+            { order_number: { in: paymentsWithoutBookings.map(p => p.gateway_order_id).filter(Boolean) } }
+          ]
+        },
+        include: {
+          cafes: { include: { users: true } },
+          users: true
+        }
+      })
+    : [];
+
+  const foodOrdersMap = new Map();
+  for (const fo of foodOrdersList) {
+    foodOrdersMap.set(fo.order_number, fo);
+  }
+
   const mapped = [];
 
   for (const p of successfulPayments) {
@@ -1224,12 +1439,29 @@ const getAdminPayouts = async (query) => {
     payoutDate.setDate(payoutDate.getDate() + 7);
 
     const b = p.bookings;
-    const eventAmount = Number(b?.event_service_amount || 0);
-    const totalSubtotal = Number(b?.subtotal || p?.amount || 0);
-    const cafeAmount = Math.max(0, totalSubtotal - eventAmount);
+    const foodOrder = !p.booking_id && p.gateway_order_id ? foodOrdersMap.get(p.gateway_order_id) : null;
+    const isFoodOrder = !p.booking_id && Boolean(foodOrder);
 
-    const hasCafeOwner = !!(b?.cafe_id || b?.cafes) && (cafeAmount > 0 || totalSubtotal > 0);
-    const hasEventManager = !!(b?.event_service_id || b?.event_services) && eventAmount > 0;
+    const cafeSplit = splitsMap.get(`${p.id}:CAFE`);
+    const eventSplit = splitsMap.get(`${p.id}:EVENT_MANAGER`);
+
+    const eventAmount = Number(b?.event_service_amount || 0);
+    let totalSubtotal = Number(b?.subtotal || p?.amount || 0);
+    let cafeAmount = Math.max(0, totalSubtotal - eventAmount);
+
+    if (isFoodOrder) {
+      // Net payable to vendor: restaurant settlement amount (discounted food subtotal + delivery charge)
+      // Excludes platform fee (3%), transaction fee (2%), and GST (18%) which settle to Grab2GO account
+      if (cafeSplit && cafeSplit.split_amount !== undefined && cafeSplit.split_amount !== null) {
+        cafeAmount = Number(cafeSplit.split_amount);
+      } else {
+        cafeAmount = Math.max(0, Number(foodOrder.subtotal || 0) - Number(foodOrder.discount_amount || 0) + Number(foodOrder.delivery_charge || 0));
+      }
+      totalSubtotal = cafeAmount;
+    }
+
+    const hasCafeOwner = isFoodOrder || (!!(b?.cafe_id || b?.cafes) && (cafeAmount > 0 || totalSubtotal > 0));
+    const hasEventManager = !isFoodOrder && !!(b?.event_service_id || b?.event_services) && eventAmount > 0;
 
     const getSplitStatus = (vendorType) => {
       const split = splitsMap.get(`${p.id}:${vendorType}`);
@@ -1358,21 +1590,71 @@ const getAdminPayoutById = async (paymentId) => {
     status = p.payout_status || 'PENDING';
   }
 
-  const paymentDate = new Date(p.paid_at || Date.now());
+  const paymentDate = new Date(p.paid_at || p.created_at || Date.now());
   const payoutDate = new Date(paymentDate);
   payoutDate.setDate(payoutDate.getDate() + 7);
 
   const b = p.bookings;
   let partnerUser = b?.cafes?.users;
   let grossAmount = Number(b?.subtotal || p.amount || 0);
+  let partnerDisplayName = partnerUser?.name || 'Unknown';
+  let referenceIdentifier = b?.booking_number || 'N/A';
+  let referenceDate = b?.booking_date || p.paid_at || p.created_at || null;
 
-  if (partnerTypeFilter === 'EVENT_MANAGER' || (!b?.cafes?.users && b?.event_services?.users)) {
+  // Check if this payment is associated with a food order
+  const foodOrder = await prisma.food_orders.findFirst({
+    where: {
+      OR: [
+        ...(p.gateway_order_id ? [{ order_number: p.gateway_order_id }] : []),
+        ...(targetSplit?.vendor_id ? [{ cafe_id: targetSplit.vendor_id }] : [])
+      ]
+    },
+    orderBy: { created_at: 'desc' },
+    include: {
+      cafes: {
+        include: { users: true }
+      },
+      users: true
+    }
+  });
+
+  if (foodOrder) {
+    partnerUser = foodOrder.cafes?.users || partnerUser;
+    partnerDisplayName = foodOrder.cafes?.name 
+      ? `${foodOrder.cafes.name} (${partnerUser?.name || 'Restaurant Owner'})`
+      : (partnerUser?.name || 'Restaurant Partner');
+    referenceIdentifier = foodOrder.order_number || referenceIdentifier;
+    referenceDate = foodOrder.created_at || referenceDate;
+    
+    // For food orders, grossAmount is food order subtotal or split amount
+    if (targetSplit?.split_amount) {
+      grossAmount = Number(targetSplit.split_amount);
+    } else {
+      grossAmount = Math.max(0, Number(foodOrder.subtotal || foodOrder.total_amount || p.amount || 0) - Number(foodOrder.discount_amount || 0));
+    }
+  } else if (partnerTypeFilter === 'EVENT_MANAGER' || (!b?.cafes?.users && b?.event_services?.users)) {
     partnerType = 'EVENT_MANAGER';
     partnerUser = b?.event_services?.users;
+    partnerDisplayName = partnerUser?.name || 'Event Manager';
     grossAmount = Number(b?.event_service_amount || b?.subtotal || p.amount || 0);
   } else if (b?.event_services?.users && partnerType === 'CAFE_OWNER') {
     const eventAmount = Number(b?.event_service_amount || 0);
     grossAmount = Number(b?.subtotal || p.amount || 0) - eventAmount;
+    partnerDisplayName = b?.cafes?.name ? `${b.cafes.name} (${partnerUser?.name || 'Cafe Owner'})` : (partnerUser?.name || 'Cafe Partner');
+  } else if (b?.cafes?.name) {
+    partnerDisplayName = `${b.cafes.name} (${partnerUser?.name || 'Cafe Owner'})`;
+  }
+
+  // If vendor_id is present on split, fallback to cafe owner user
+  if (!partnerUser && targetSplit?.vendor_id) {
+    const targetCafe = await prisma.cafes.findUnique({
+      where: { id: targetSplit.vendor_id },
+      include: { users: true }
+    });
+    if (targetCafe) {
+      partnerUser = targetCafe.users;
+      partnerDisplayName = `${targetCafe.name} (${partnerUser?.name || 'Owner'})`;
+    }
   }
 
   return {
@@ -1380,7 +1662,7 @@ const getAdminPayoutById = async (paymentId) => {
       id: paymentId,
       transaction_id: p.gateway_payment_id || p.gateway_order_id,
       reference_number: `REF-${p.id.substring(0,8).toUpperCase()}`,
-      booking_number: b?.booking_number,
+      booking_number: referenceIdentifier,
       gross_amount: grossAmount,
       fahara_fee: 0,
       taxes: 0,
@@ -1389,14 +1671,14 @@ const getAdminPayoutById = async (paymentId) => {
       status: status,
       payout_status: status,
       payout_completed_at: p.payout_completed_at || null,
-      date: p.paid_at || new Date().toISOString(),
-      booking_date: b?.booking_date || null,
+      date: p.paid_at || p.created_at || new Date().toISOString(),
+      booking_date: referenceDate,
       transfer_date: p.payout_completed_at ? p.payout_completed_at.toISOString() : payoutDate.toISOString(),
       partner_type: partnerType,
-      partner_name: partnerUser?.name || 'Unknown',
+      partner_name: partnerDisplayName,
       partner_email: partnerUser?.email || null,
       bank_name: partnerUser?.bank_name || 'Not provided',
-      account_holder: partnerUser?.account_holder || 'Not provided',
+      account_holder: partnerUser?.account_holder || partnerUser?.name || 'Not provided',
       account_number: partnerUser?.account_number || 'Not provided',
       ifsc_code: partnerUser?.ifsc_code || 'Not provided'
     }
@@ -1488,168 +1770,19 @@ const completeAdminPayout = async (paymentId) => {
   return await updatePayoutStatus(paymentId, 'COMPLETED');
 };
 
-const getAdminRevenueSummary = async (query) => {
-  // Parse filter to startDate and endDate
-  if (query.filter && !query.startDate && !query.endDate) {
-    const today = new Date();
-    let startDate = new Date();
-    let endDate = new Date();
-
-    if (query.filter === 'Today') {
-      startDate.setHours(0, 0, 0, 0);
-    } else if (query.filter === 'Week') {
-      const day = startDate.getDay();
-      const diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
-      startDate = new Date(startDate.setDate(diff));
-      startDate.setHours(0, 0, 0, 0);
-    } else if (query.filter === 'Month') {
-      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-    } else if (query.filter === 'Quarter') {
-      const quarter = Math.floor(today.getMonth() / 3);
-      startDate = new Date(today.getFullYear(), quarter * 3, 1);
-    } else if (query.filter === 'Year') {
-      startDate = new Date(today.getFullYear(), 0, 1);
-    } else {
-      startDate = null;
-      endDate = null;
-    }
-    
-    if (startDate && endDate) {
-      query.startDate = startDate.toISOString();
-      query.endDate = endDate.toISOString();
-    }
-  }
-
-  const allPayments = await paymentRepository.getAllAdminTransactions(query);
-  const successfulPayments = allPayments.filter(p => p.status === 'SUCCESS' || p.status === 'PAID');
-  const refundedPayments = allPayments.filter(p => p.status === 'REFUNDED');
-
-  let grossBookingValue = 0;
-  let faharaPlatformRevenue = 0;
-  let gstTax = 0;
-  let transactionFeeTotal = 0;
-  let discounts = 0;
-  let refunds = 0;
-  let cafePayable = 0;
-  let eventManagerPayable = 0;
-  let pendingSettlement = 0;
-
-  const today = new Date();
-  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const startOfMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000); 
-
-  let todayRevenue = 0;
-  let monthlyRevenue = 0;
-  let ytdRevenue = 0;
-
-  const months = [];
-  const monthlyValues = [];
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const getAdminRevenueSummary = async (query = {}) => {
+  const { getFinancialMetrics } = require('./financialCalculationService');
   
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-    months.push(monthNames[d.getMonth()]);
-    monthlyValues.push(0);
-  }
-
-  successfulPayments.forEach(p => {
-    const b = p.bookings;
-    if (!b) return;
-
-    // Direct Database Fields
-    const gv = Number(b.total || p.amount || 0);
-    const subtotalVal = Number(b.subtotal || 0);
-    const platformRev = Number(b.fahara_service_charge || p.platform_fee || (subtotalVal * 0.03));
-    const tax = Number(b.gst ?? p.gst_amount ?? 0);
-    const rawTxnFee = Number(b.transaction_fee || 0);
-    const computedTxnFee = rawTxnFee > 0 ? rawTxnFee : (gv > 0 && gv > (subtotalVal + platformRev + tax) ? (gv - subtotalVal - platformRev - tax) : 0);
-    const txnFee = Number(computedTxnFee.toFixed(2));
-    const disc = Number(b.discount || 0);
-
-    grossBookingValue += gv;
-    faharaPlatformRevenue += platformRev;
-    gstTax += tax;
-    transactionFeeTotal += txnFee;
-    discounts += disc;
-
-    // Direct vendor package and add-on amounts (strictly excludes GST and platform/transaction fees)
-    let cafeAmt = Number(b.cafe_amount || 0) + Number(b.food_amount || 0) + Number(b.decoration_amount || 0) + Number(b.extra_person_amount || 0);
-    let eventAmt = Number(b.event_service_amount || 0);
-
-    // Fallback for legacy bookings where subtotal wasn't broken down into cafe/event fields
-    if (cafeAmt === 0 && eventAmt === 0 && Number(b.subtotal || 0) > 0) {
-      if (b.event_service_id != null) {
-        cafeAmt = Number(b.subtotal) / 2;
-        eventAmt = Number(b.subtotal) / 2;
-      } else {
-        cafeAmt = Number(b.subtotal);
-      }
-    }
-
-    cafePayable += cafeAmt;
-    eventManagerPayable += eventAmt;
-
-    const netPayable = cafeAmt + eventAmt;
-
-    const date = new Date(p.paid_at || b.booking_date || new Date());
-    
-    // Check pending settlements
-    const payoutDate = new Date(date);
-    payoutDate.setDate(payoutDate.getDate() + 7);
-    if (payoutDate > today) {
-      pendingSettlement += netPayable;
-    }
-
-    if (date >= startOfDay) todayRevenue += platformRev;
-    if (date >= startOfMonth) monthlyRevenue += platformRev;
-    ytdRevenue += platformRev;
-
-    const monthDiff = (today.getFullYear() - date.getFullYear()) * 12 + (today.getMonth() - date.getMonth());
-    if (monthDiff >= 0 && monthDiff <= 5) {
-      const idx = 5 - monthDiff;
-      monthlyValues[idx] += platformRev;
-    }
+  const metrics = await getFinancialMetrics({
+    role: 'ADMIN',
+    filter: query.filter,
+    period: query.period,
+    startDate: query.startDate,
+    endDate: query.endDate
   });
-
-  refundedPayments.forEach(p => {
-    refunds += Number(p.amount || 0);
-  });
-
-  const netRevenue = faharaPlatformRevenue; // Already net of refunds if we count them separate or we subtract refunds from it
-  
-  const successRate = allPayments.length > 0 ? (successfulPayments.length / allPayments.length) * 100 : 0;
-  const refundRate = allPayments.length > 0 ? (refundedPayments.length / allPayments.length) * 100 : 0;
-
-  const formatDec = (val) => Number(Number(val || 0).toFixed(2));
 
   return {
-    data: {
-      gross_booking_value: formatDec(grossBookingValue),
-      grossBookingValue: formatDec(grossBookingValue),
-      fahara_platform_revenue: formatDec(faharaPlatformRevenue),
-      fahara_revenue: formatDec(faharaPlatformRevenue),
-      faharaRevenue: formatDec(faharaPlatformRevenue),
-      gst_tax: formatDec(gstTax),
-      gst_amount: formatDec(gstTax),
-      gstAmount: formatDec(gstTax),
-      transaction_fee: formatDec(transactionFeeTotal),
-      transactionFee: formatDec(transactionFeeTotal),
-      discounts: formatDec(discounts),
-      refunds: formatDec(refunds),
-      cafe_payable: formatDec(cafePayable),
-      cafePayable: formatDec(cafePayable),
-      event_manager_payable: formatDec(eventManagerPayable),
-      eventManagerPayable: formatDec(eventManagerPayable),
-      net_revenue: formatDec(netRevenue),
-      netRevenue: formatDec(netRevenue),
-      pending_settlement: formatDec(pendingSettlement),
-      today_revenue: formatDec(todayRevenue),
-      monthly_revenue: formatDec(monthlyRevenue),
-      ytd_revenue: formatDec(ytdRevenue),
-      success_rate: Number(successRate.toFixed(1)),
-      refund_rate: Number(refundRate.toFixed(1)),
-      chart_data: { months, values: monthlyValues }
-    }
+    data: metrics
   };
 };
 
@@ -1712,8 +1845,11 @@ const getAdminTransactions = async (query) => {
       // Row 1 — Cafe Owner
       rows.push({
         id: `${p.id}_cafe`,
+        type: 'CAFE',
+        category: 'CAFE_BOOKING',
         transaction_id: p.gateway_payment_id || p.gateway_order_id || p.id,
         booking_number: b?.booking_number || 'N/A',
+        order_number: b?.booking_number || 'N/A',
         date: p.paid_at || p.created_at || new Date().toISOString(),
         customer_name: b?.users?.name || 'Guest',
         gross_amount: gross,
@@ -1721,7 +1857,7 @@ const getAdminTransactions = async (query) => {
         gst: tax,
         net_payable: cafeShare,
         status: p.status,
-        partner_name: b?.cafes?.users?.name || 'Unknown Cafe Owner',
+        partner_name: b?.cafes?.users?.name || b?.cafes?.name || 'Unknown Cafe Owner',
         partner_type: 'CAFE_OWNER',
         is_split: true
       });
@@ -1729,8 +1865,11 @@ const getAdminTransactions = async (query) => {
       // Row 2 — Event Manager
       rows.push({
         id: `${p.id}_event`,
+        type: 'CAFE',
+        category: 'EVENT_SERVICE',
         transaction_id: p.gateway_payment_id || p.gateway_order_id || p.id,
         booking_number: b?.booking_number || 'N/A',
+        order_number: b?.booking_number || 'N/A',
         date: p.paid_at || p.created_at || new Date().toISOString(),
         customer_name: b?.users?.name || 'Guest',
         gross_amount: gross,
@@ -1746,8 +1885,11 @@ const getAdminTransactions = async (query) => {
       // Single-partner (cafe only) booking
       rows.push({
         id: p.id,
+        type: 'CAFE',
+        category: 'CAFE_BOOKING',
         transaction_id: p.gateway_payment_id || p.gateway_order_id || p.id,
         booking_number: b?.booking_number || 'N/A',
+        order_number: b?.booking_number || 'N/A',
         date: p.paid_at || p.created_at || new Date().toISOString(),
         customer_name: b?.users?.name || 'Guest',
         gross_amount: gross,
@@ -1755,15 +1897,109 @@ const getAdminTransactions = async (query) => {
         gst: tax,
         net_payable: totalPayable,
         status: p.status,
-        partner_name: b?.cafes?.users?.name || 'Unknown',
+        partner_name: b?.cafes?.users?.name || b?.cafes?.name || 'Unknown Cafe',
         partner_type: 'CAFE_OWNER',
         is_split: false
       });
     }
   }
 
+  // 2. Fetch Food Orders Transactions (Paid or Refunded)
+  try {
+    const { calculateFoodPaymentBreakdown } = require('./foodPaymentCalculationService');
+    const foodOrderWhere = {
+      payment_status: { in: ['PAID', 'REFUNDED'] }
+    };
+    if (query.startDate && query.endDate) {
+      foodOrderWhere.created_at = {
+        gte: new Date(query.startDate),
+        lte: new Date(query.endDate)
+      };
+    }
+
+    const foodOrders = await prisma.food_orders.findMany({
+      where: foodOrderWhere,
+      include: {
+        cafes: {
+          include: {
+            users: { select: { id: true, name: true, email: true } }
+          }
+        },
+        users: { select: { id: true, name: true, email: true, phone: true } }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    for (const fo of foodOrders) {
+      const breakdown = calculateFoodPaymentBreakdown({
+        subtotal: fo.subtotal,
+        discountAmount: fo.discount_amount,
+        deliveryCharge: fo.delivery_charge
+      });
+
+      const gross = Number(fo.total_amount || breakdown.totalPayableAmount || 0);
+      const platformFee = Number(breakdown.platformFeeAmount || 0);
+      const gst = Number(breakdown.transactionFeeGstAmount || 0);
+      const netPayable = Number(breakdown.restaurantSettlementAmount || (gross - platformFee));
+
+      rows.push({
+        id: `food_${fo.id}`,
+        type: 'FOOD',
+        category: 'FOOD_ORDER',
+        transaction_id: fo.order_number,
+        booking_number: fo.order_number,
+        order_number: fo.order_number,
+        date: fo.created_at || new Date().toISOString(),
+        customer_name: fo.customer_name || fo.users?.name || 'Customer',
+        gross_amount: gross,
+        platform_fee: platformFee,
+        gst,
+        net_payable: netPayable,
+        status: fo.payment_status,
+        partner_name: fo.cafes?.name || fo.cafes?.users?.name || 'Restaurant Partner',
+        partner_type: 'CAFE_OWNER',
+        is_split: false
+      });
+    }
+  } catch (foodErr) {
+    console.warn('[getAdminTransactions] Error fetching food transactions:', foodErr.message);
+  }
+
+  // Sort unified transactions chronologically descending
+  rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Calculate separate Cafe and Food revenues
+  const cafeTransactions = rows.filter(r => r.type === 'CAFE');
+  const foodTransactions = rows.filter(r => r.type === 'FOOD');
+
+  const cafeRevenue = Number(cafeTransactions.reduce((acc, r) => acc + (Number(r.gross_amount) || 0), 0).toFixed(2));
+  const foodRevenue = Number(foodTransactions.reduce((acc, r) => acc + (Number(r.gross_amount) || 0), 0).toFixed(2));
+  const totalRevenue = Number((cafeRevenue + foodRevenue).toFixed(2));
+
+  const cafePlatformFee = Number(cafeTransactions.reduce((acc, r) => acc + (Number(r.platform_fee) || 0), 0).toFixed(2));
+  const foodPlatformFee = Number(foodTransactions.reduce((acc, r) => acc + (Number(r.platform_fee) || 0), 0).toFixed(2));
+  const totalPlatformFee = Number((cafePlatformFee + foodPlatformFee).toFixed(2));
+
+  const cafeNetPayable = Number(cafeTransactions.reduce((acc, r) => acc + (Number(r.net_payable) || 0), 0).toFixed(2));
+  const foodNetPayable = Number(foodTransactions.reduce((acc, r) => acc + (Number(r.net_payable) || 0), 0).toFixed(2));
+  const totalNetPayable = Number((cafeNetPayable + foodNetPayable).toFixed(2));
+
   return {
     data: rows,
+    revenueSummary: {
+      totalRevenue,
+      cafeRevenue,
+      foodRevenue,
+      totalPlatformFee,
+      cafePlatformFee,
+      foodPlatformFee,
+      totalNetPayable,
+      cafeNetPayable,
+      foodNetPayable,
+      totalCount: rows.length,
+      cafeCount: cafeTransactions.length,
+      foodCount: foodTransactions.length
+    },
     pagination: {
       total: rows.length,
       page: 1,
@@ -1921,28 +2157,71 @@ const getAdminRefundDetails = async (id) => {
             }
           }
         }
+      },
+      bookings: {
+        include: {
+          users: true,
+          cafes: true
+        }
+      },
+      food_orders: {
+        include: {
+          users: true,
+          cafes: true,
+          order_items: {
+            include: {
+              menu_item: true
+            }
+          },
+          order_cancellations: {
+            take: 1,
+            orderBy: { created_at: 'desc' }
+          }
+        }
+      },
+      refund_timelines: {
+        orderBy: { created_at: 'desc' }
       }
     }
   });
 
   if (!r) return { data: null };
 
-  const b = r.payments?.bookings;
-  const isCompleted = r.refund_status === 'SUCCESS' || r.refund_status === 'COMPLETED' || r.payments?.status === 'REFUNDED';
+  const isFood = Boolean(r.food_orders);
+  const b = r.bookings || r.payments?.bookings;
+  const fo = r.food_orders;
+  const isCompleted = r.refund_status === 'SUCCESS' || r.refund_status === 'COMPLETED' || r.refund_status === 'PROCESSED' || r.payments?.status === 'REFUNDED';
+
+  const orderNumber = isFood ? fo?.order_number : b?.booking_number || 'N/A';
+  const customerName = isFood ? (fo?.customer_name || fo?.users?.name || 'Guest Diner') : (b?.users?.name || 'Guest');
+  const customerEmail = isFood ? (fo?.users?.email || 'N/A') : (b?.users?.email || 'N/A');
+  const customerPhone = isFood ? (fo?.customer_phone || fo?.users?.phone || 'N/A') : (b?.users?.phone || 'N/A');
+  const cafeName = isFood ? fo?.cafes?.name : b?.cafes?.name || 'Grab2GO Partner';
 
   return {
     data: {
       id: r.id,
       payment_id: r.payment_id,
-      booking: b?.booking_number || 'N/A',
-      customer: b?.users?.name || 'Guest',
-      customer_email: b?.users?.email || 'N/A',
-      customer_phone: b?.users?.phone || 'N/A',
+      booking: orderNumber,
+      order_number: orderNumber,
+      isFoodOrder: isFood,
+      order_id: r.order_id,
+      booking_id: r.booking_id,
+      customer: customerName,
+      customer_email: customerEmail,
+      customer_phone: customerPhone,
+      restaurant: cafeName,
+      cafe: cafeName,
       amount: Number(r.refund_amount || 0),
-      reason: r.reason || 'Booking cancellation refund',
-      status: isCompleted ? 'Completed' : 'Processing',
+      original_amount: isFood ? Number(fo?.total_amount || 0) : Number(b?.total || r.payments?.amount || r.refund_amount || 0),
+      reason: r.reason || (isFood ? 'Food order cancellation refund' : 'Booking cancellation refund'),
+      status: isCompleted ? 'Completed' : (r.refund_status === 'FAILED' ? 'Failed' : 'Processing'),
+      raw_status: r.refund_status,
+      gateway_refund_id: r.razorpay_refund_id || r.provider_refund_id,
       requested_date: r.created_at || new Date().toISOString(),
-      processed_date: isCompleted ? (r.updated_at || r.created_at) : null
+      processed_date: isCompleted ? (r.completed_at || r.updated_at || r.created_at) : null,
+      cancellation_details: fo?.order_cancellations?.[0] || null,
+      timelines: r.refund_timelines || []
     }
   };
 };
@@ -1951,15 +2230,22 @@ const getAdminDisputes = async (query) => {
   return { data: [] };
 };
 
-const getOwnerSettlements = async (ownerId, query) => {
+const getOwnerSettlements = async (ownerId, query = {}) => {
   const dbRefunds = await prisma.payment_refunds.findMany({
-    select: { payment_id: true, booking_id: true }
+    select: { payment_id: true, booking_id: true, order_id: true }
   });
   const refundedPaymentIds = Array.from(new Set(dbRefunds.map(r => r.payment_id).filter(Boolean)));
   const refundedBookingIds = Array.from(new Set(dbRefunds.map(r => r.booking_id).filter(Boolean)));
 
   const targetVendorType = query.vendor_type || 'CAFE';
   
+  // Find cafes owned by this user
+  const ownedCafes = await prisma.cafes.findMany({
+    where: { owner_id: ownerId },
+    select: { id: true }
+  });
+  const ownedCafeIds = ownedCafes.map(c => c.id);
+
   // Build settlement_status filter
   let settlementStatusCondition = { notIn: ['REVERSED', 'CANCELLED'] };
   if (query.status && query.status.toUpperCase() !== 'ALL') {
@@ -1981,15 +2267,11 @@ const getOwnerSettlements = async (ownerId, query) => {
       settlement_status: settlementStatusCondition,
       payments: {
         id: { notIn: refundedPaymentIds },
-        status: { notIn: ['REFUNDED', 'PARTIALLY_REFUNDED', 'CANCELLED', 'FAILED'] },
-        bookings: {
-          id: { notIn: refundedBookingIds },
-          booking_status: { notIn: ['CANCELLED', 'REJECTED', 'DECLINED', 'REFUNDED'] },
-          payment_status: { notIn: ['REFUNDED', 'PARTIALLY_REFUNDED', 'CANCELLED', 'FAILED'] }
-        }
+        status: { notIn: ['REFUNDED', 'PARTIALLY_REFUNDED', 'CANCELLED', 'FAILED'] }
       },
       OR: [
         { vendor_id: ownerId },
+        ...(ownedCafeIds.length > 0 ? [{ vendor_id: { in: ownedCafeIds } }] : []),
         {
           payments: {
             bookings: {
@@ -2018,6 +2300,7 @@ const getOwnerSettlements = async (ownerId, query) => {
   if (splits && splits.length > 0) {
     const formatted = splits.map(s => {
       const b = s.payments?.bookings;
+      const isFoodOrder = !s.payments?.booking_id;
       const statusMap = {
         'SETTLED': 'Settled',
         'COMPLETED': 'Settled',
@@ -2032,10 +2315,14 @@ const getOwnerSettlements = async (ownerId, query) => {
       const expectedSettlementDate = new Date(invoiceDate);
       expectedSettlementDate.setDate(expectedSettlementDate.getDate() + 7);
 
+      const bookingIdentifier = isFoodOrder 
+        ? (s.payments?.gateway_order_id || s.payments?.provider_order_id || 'FOOD_ORDER')
+        : (b?.booking_number || b?.id || 'N/A');
+
       return {
         id: s.id,
-        bookingId: b?.booking_number || b?.id || 'N/A',
-        booking_id: b?.booking_number || b?.id || 'N/A',
+        bookingId: bookingIdentifier,
+        booking_id: bookingIdentifier,
         date: s.settled_at || (mappedStatus === 'Settled' ? s.created_at : expectedSettlementDate.toISOString()),
         amount: Number(s.split_amount || 0),
         settled_amount: Number(s.split_amount || 0),

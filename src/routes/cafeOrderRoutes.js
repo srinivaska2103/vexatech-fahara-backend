@@ -12,12 +12,15 @@ router.use(vendorRoles);
 
 // Orders Management
 router.get('/orders/stats', orderController.getCafeOrderStats);
+router.get('/orders/refund-requests', orderController.getCafeRefundRequests);
 router.get('/orders', orderController.getCafeOrders);
 router.get('/orders/:id', orderController.getCafeOrderById);
 router.patch('/orders/:id/status', orderController.updateCafeOrderStatus);
 router.post('/orders/:id/assign-delivery', orderController.assignDelivery);
 router.post('/orders/:id/cancellation/approve', orderController.approveOwnerCancellation);
 router.post('/orders/:id/cancellation/reject', orderController.rejectOwnerCancellation);
+router.post('/orders/:id/refund/approve', orderController.approveOwnerCancellation);
+router.post('/orders/:id/refund/reject', orderController.rejectOwnerCancellation);
 
 // Fulfilment Settings
 router.get('/fulfilment-settings', fulfilmentController.getFulfilmentSettings);

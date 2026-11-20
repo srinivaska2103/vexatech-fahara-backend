@@ -206,6 +206,8 @@ const updateBankDetailsAndVerify = async ({
   confirmAccountNumber,
   accountHolder,
   ifsc,
+  bankName,
+  accountType,
   phone,
   email
 }) => {
@@ -396,7 +398,7 @@ const updateBankDetailsAndVerify = async ({
     await prisma.users.update({
       where: { id: user.id },
       data: {
-        bank_name: 'Connected Bank',
+        bank_name: bankName || 'Connected Bank',
         account_holder: cleanHolder,
         account_number: maskedAccount,
         ifsc_code: cleanIfsc

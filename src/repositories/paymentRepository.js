@@ -29,13 +29,81 @@ const updatePaymentStatus = async (id, status, gatewayPaymentId = null, paidAt =
   });
 };
 
-const getOwnerPayments = async (ownerId) => {
-  return await prisma.payments.findMany({
+const getOwnerPayments = async (ownerId, query = {}) => {
+  // First check if owner owns cafes (restaurants or cafes)
+  const ownedCafes = await prisma.cafes.findMany({
+    where: { owner_id: ownerId },
+    select: { id: true }
+  });
+  const ownedCafeIds = ownedCafes.map(c => c.id);
+
+  // Fetch food orders belonging to this owner's cafes
+  const foodOrders = ownedCafeIds.length > 0 ? await prisma.food_orders.findMany({
+    where: { cafe_id: { in: ownedCafeIds } },
+    select: {
+      id: true,
+      order_number: true,
+      order_status: true,
+      payment_status: true,
+      customer_name: true,
+      subtotal: true,
+      discount_amount: true,
+      total_amount: true,
+      created_at: true,
+      cafes: { select: { id: true, name: true } },
+      payment_refunds: true
+    }
+  }) : [];
+
+  const foodOrderNumbers = foodOrders.map(o => o.order_number);
+  const foodOrderMap = {};
+  foodOrders.forEach(o => { foodOrderMap[o.order_number] = o; });
+
+  const whereConditions = [
+    { bookings: { cafes: { owner_id: ownerId } } },
+    { bookings: { event_services: { user_id: ownerId } } }
+  ];
+
+  if (foodOrderNumbers.length > 0) {
+    whereConditions.push({
+      AND: [
+        { booking_id: null },
+        {
+          OR: [
+            { gateway_order_id: { in: foodOrderNumbers } },
+            { provider_order_id: { in: foodOrderNumbers } }
+          ]
+        }
+      ]
+    });
+  }
+
+  // Handle date filters if specified in query
+  let dateCondition = undefined;
+  const now = new Date();
+  if (query.dateFilter === 'TODAY' || query.date_range === 'TODAY') {
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    dateCondition = { gte: startOfDay };
+  } else if (query.dateFilter === '7_DAYS' || query.date_range === '7_DAYS') {
+    const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    dateCondition = { gte: past7 };
+  } else if (query.dateFilter === '30_DAYS' || query.date_range === '30_DAYS') {
+    const past30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    dateCondition = { gte: past30 };
+  } else if (query.dateFilter === 'THIS_MONTH' || query.date_range === 'THIS_MONTH') {
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    dateCondition = { gte: startOfMonth };
+  }
+
+  const payments = await prisma.payments.findMany({
     where: { 
-      OR: [
-        { bookings: { cafes: { owner_id: ownerId } } },
-        { bookings: { event_services: { user_id: ownerId } } }
-      ] 
+      OR: whereConditions,
+      ...(dateCondition ? {
+        OR: [
+          { paid_at: dateCondition },
+          { created_at: dateCondition }
+        ]
+      } : {})
     },
     include: { 
       bookings: { 
@@ -44,19 +112,76 @@ const getOwnerPayments = async (ownerId) => {
           cafes: true,
           event_services: { include: { users: true } }
         } 
-      } 
+      },
+      payment_splits: true,
+      payment_refunds: true
     },
     orderBy: { paid_at: { sort: 'desc', nulls: 'last' } }
+  });
+
+  // Attach food order metadata to payments with booking_id: null
+  return payments.map(p => {
+    if (!p.booking_id) {
+      const fo = foodOrderMap[p.gateway_order_id] || foodOrderMap[p.provider_order_id];
+      if (fo) {
+        return {
+          ...p,
+          food_order: fo,
+          _food_customer_name: fo.customer_name,
+          _food_cafe_name: fo.cafes?.name
+        };
+      }
+    }
+    return p;
   });
 };
 
 const getOwnerSuccessfulPayments = async (ownerId) => {
-  return await prisma.payments.findMany({
+  const ownedCafes = await prisma.cafes.findMany({
+    where: { owner_id: ownerId },
+    select: { id: true }
+  });
+  const ownedCafeIds = ownedCafes.map(c => c.id);
+
+  const foodOrders = ownedCafeIds.length > 0 ? await prisma.food_orders.findMany({
+    where: { cafe_id: { in: ownedCafeIds }, payment_status: 'PAID' },
+    select: {
+      id: true,
+      order_number: true,
+      customer_name: true,
+      subtotal: true,
+      total_amount: true,
+      created_at: true,
+      cafes: { select: { id: true, name: true } }
+    }
+  }) : [];
+
+  const foodOrderNumbers = foodOrders.map(o => o.order_number);
+  const foodOrderMap = {};
+  foodOrders.forEach(o => { foodOrderMap[o.order_number] = o; });
+
+  const whereConditions = [
+    { bookings: { cafes: { owner_id: ownerId } } },
+    { bookings: { event_services: { user_id: ownerId } } }
+  ];
+
+  if (foodOrderNumbers.length > 0) {
+    whereConditions.push({
+      AND: [
+        { booking_id: null },
+        {
+          OR: [
+            { gateway_order_id: { in: foodOrderNumbers } },
+            { provider_order_id: { in: foodOrderNumbers } }
+          ]
+        }
+      ]
+    });
+  }
+
+  const payments = await prisma.payments.findMany({
     where: { 
-      OR: [
-        { bookings: { cafes: { owner_id: ownerId } } },
-        { bookings: { event_services: { user_id: ownerId } } }
-      ],
+      OR: whereConditions,
       status: 'SUCCESS'
     },
     include: { 
@@ -70,8 +195,25 @@ const getOwnerSuccessfulPayments = async (ownerId) => {
           cafes: true,
           event_services: true
         } 
-      } 
+      },
+      payment_splits: true,
+      payment_refunds: true
     }
+  });
+
+  return payments.map(p => {
+    if (!p.booking_id) {
+      const fo = foodOrderMap[p.gateway_order_id] || foodOrderMap[p.provider_order_id];
+      if (fo) {
+        return {
+          ...p,
+          food_order: fo,
+          _food_customer_name: fo.customer_name,
+          _food_cafe_name: fo.cafes?.name
+        };
+      }
+    }
+    return p;
   });
 };
 

@@ -1260,7 +1260,7 @@ const updateBookingStatus = async (id, userId, status) => {
   return updatedBooking;
 };
 
-const cancelBooking = async (id, userId, userRole) => {
+const cancelBooking = async (id, userId, userRole, cancelReason = null) => {
   const booking = await bookingRepository.getBookingById(id);
   if (!booking) {
     const error = new Error('Booking not found');
@@ -1354,17 +1354,25 @@ const cancelBooking = async (id, userId, userRole) => {
     }
   }
 
+  const reasonText = cancelReason || (isCustomer ? 'Customer requested cancellation' : 'Cancelled by administrator/venue');
+
   // Process refund if paid
   if (booking.payment_status === 'PAID') {
-    await paymentService.processRefund(id);
-    await bookingRepository.updateBookingPaymentStatus(id, 'REFUNDED');
+    try {
+      await paymentService.processRefund(id);
+    } catch (refundErr) {
+      console.error('[BookingService] processRefund error during cancellation:', refundErr.message);
+    }
+  } else {
+    // Unpaid booking: ensure status is marked CANCELLED
+    await bookingRepository.updateBookingPaymentStatus(id, 'UNPAID');
   }
 
   const updatedBooking = await bookingRepository.updateBookingStatus(id, 'CANCELLED');
 
   // Loyalty Service Hook: Reverse credit if previously awarded
   const loyaltyService = require('./loyaltyService');
-  loyaltyService.reverseBookingCredit(id, 'Booking cancelled by customer/admin').catch(err => console.error('[LoyaltyHook] Error reversing credit:', err));
+  loyaltyService.reverseBookingCredit(id, `Booking cancelled: ${reasonText}`).catch(err => console.error('[LoyaltyHook] Error reversing credit:', err));
   
   // Fetch full details for notification
   const fullBooking = await bookingRepository.getBookingById(id);
@@ -1373,6 +1381,8 @@ const cancelBooking = async (id, userId, userRole) => {
   else if (isCafeOwner) actorRole = 'Cafe Owner';
   else if (isEventManager) actorRole = 'Event Manager';
 
+  // Send relevant cancellation notification (Booking cancellation confirmation to customer, cancellation notification to cafe owner)
+  // NEVER sends settlement emails!
   notificationService.notifyBookingStatusUpdated(fullBooking, 'CANCELLED', actorRole).catch(err => console.error(err));
 
   return updatedBooking;

@@ -15,10 +15,11 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
   }
 
-  const decoded = jwtUtils.verifyToken(token);
+  const verifyResult = jwtUtils.verifyTokenWithReason ? jwtUtils.verifyTokenWithReason(token) : { decoded: jwtUtils.verifyToken(token) };
+  const decoded = verifyResult.decoded;
   if (!decoded) {
-    console.log('[AuthMiddleware] Error: Not authorized, token failed');
-    return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
+    console.log(`[AuthMiddleware] Error: Not authorized, token failed (${verifyResult.error || 'verification failed'})`);
+    return res.status(401).json({ success: false, message: 'Not authorized, token failed', reason: verifyResult.error });
   }
 
   try {

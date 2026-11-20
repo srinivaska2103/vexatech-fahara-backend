@@ -94,8 +94,9 @@ const updateOfferStatus = async (req, res, next) => {
 
 const getPublicOffers = async (req, res, next) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
-    const offers = await offerService.getPublicOffers(limit);
+    const limit = parseInt(req.query.limit) || 30;
+    const category = req.query.category || req.query.offerCategory || null;
+    const offers = await offerService.getPublicOffers(limit, category);
     res.status(200).json({
       success: true,
       message: 'Public offers retrieved successfully',

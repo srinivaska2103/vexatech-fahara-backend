@@ -433,12 +433,16 @@ const getCustomerFoodOrders = async (customerId, ownerId, userRole = 'CAFE_OWNER
     },
     include: {
       cafes: { select: { name: true } },
-      food_order_items: true
+      order_items: true
     },
     orderBy: { created_at: 'desc' }
   });
 
-  return orders;
+  // Map order_items to food_order_items for backwards compatibility with frontends expecting either property
+  return orders.map(order => ({
+    ...order,
+    food_order_items: order.order_items || []
+  }));
 };
 
 /**

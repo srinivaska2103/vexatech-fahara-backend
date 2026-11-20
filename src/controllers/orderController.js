@@ -3,6 +3,7 @@ const orderRepository = require('../repositories/orderRepository');
 const cafeRepository = require('../repositories/cafeRepository');
 const foodOrderPaymentService = require('../services/foodOrderPaymentService');
 const orderCancellationRefundService = require('../services/orderCancellationRefundService');
+const prisma = require('../config/prisma');
 
 const orderController = {
   // ── CUSTOMER ENDPOINTS ──────────────────────────────────────────────────
@@ -59,12 +60,36 @@ const orderController = {
       }
 
       const breakdown = foodOrderPaymentService.calculatePaymentBreakdown(order);
+      let cancellationPolicy = null;
+      try {
+        cancellationPolicy = await orderCancellationRefundService.getCancellationPolicy(order.id, order.customer_id);
+      } catch (polErr) {
+        // Non-blocking fallback
+      }
+
+      // Fetch latest delivery GPS location if assigned
+      let latestDeliveryLocation = null;
+      if (order.assigned_employee_id) {
+        latestDeliveryLocation = await prisma.delivery_locations.findFirst({
+          where: { order_id: order.id, employee_id: order.assigned_employee_id },
+          orderBy: { recorded_at: 'desc' }
+        });
+      }
 
       return res.status(200).json({
         success: true,
         data: {
           ...order,
-          payment_breakdown: breakdown
+          payment_breakdown: breakdown,
+          cancellation_policy: cancellationPolicy,
+          delivery_location: latestDeliveryLocation ? {
+            latitude: Number(latestDeliveryLocation.latitude),
+            longitude: Number(latestDeliveryLocation.longitude),
+            accuracy: latestDeliveryLocation.accuracy ? Number(latestDeliveryLocation.accuracy) : null,
+            heading: latestDeliveryLocation.heading ? Number(latestDeliveryLocation.heading) : null,
+            speed: latestDeliveryLocation.speed ? Number(latestDeliveryLocation.speed) : null,
+            recordedAt: latestDeliveryLocation.recorded_at
+          } : null
         }
       });
     } catch (err) {
@@ -85,24 +110,49 @@ const orderController = {
         });
       }
 
-      // Safe representation without sensitive driver data
+      // Fetch latest delivery GPS location if order has assigned driver
+      let latestDeliveryLocation = null;
+      if (order.assigned_employee_id) {
+        latestDeliveryLocation = await prisma.delivery_locations.findFirst({
+          where: { order_id: order.id, employee_id: order.assigned_employee_id },
+          orderBy: { recorded_at: 'desc' }
+        });
+      }
+
+      // Safe representation with live location data
       const trackingData = {
         orderId: order.id,
         orderNumber: order.order_number,
         orderType: order.order_type,
         orderStatus: order.order_status,
         restaurant: {
+          id: order.cafes.id,
           name: order.cafes.name,
           address: order.cafes.address,
-          city: order.cafes.city
+          city: order.cafes.city,
+          coverImage: order.cafes.cover_image,
+          latitude: order.cafes.latitude ? Number(order.cafes.latitude) : null,
+          longitude: order.cafes.longitude ? Number(order.cafes.longitude) : null
         },
         estimatedPreparationTime: order.estimated_preparation_time,
         fulfilmentAddress: order.fulfilment_address,
         pickupDate: order.pickup_date,
         pickupTime: order.pickup_time,
         assignedStaff: order.assigned_employee ? {
+          id: order.assigned_employee.id,
           name: order.assigned_employee.name,
-          vehicleType: order.assigned_employee.vehicle_type
+          phone: order.assigned_employee.phone,
+          vehicleType: order.assigned_employee.vehicle_type,
+          vehicleNumber: order.assigned_employee.vehicle_number,
+          availabilityStatus: order.assigned_employee.availability_status
+        } : null,
+        deliveryLocation: latestDeliveryLocation ? {
+          latitude: Number(latestDeliveryLocation.latitude),
+          longitude: Number(latestDeliveryLocation.longitude),
+          accuracy: latestDeliveryLocation.accuracy ? Number(latestDeliveryLocation.accuracy) : null,
+          heading: latestDeliveryLocation.heading ? Number(latestDeliveryLocation.heading) : null,
+          speed: latestDeliveryLocation.speed ? Number(latestDeliveryLocation.speed) : null,
+          recordedAt: latestDeliveryLocation.recorded_at
         } : null,
         timeline: order.order_status_history,
         createdAt: order.created_at,
@@ -195,12 +245,36 @@ const orderController = {
       }
 
       const breakdown = foodOrderPaymentService.calculatePaymentBreakdown(order);
+      let cancellationPolicy = null;
+      try {
+        cancellationPolicy = await orderCancellationRefundService.getCancellationPolicy(order.id, order.customer_id);
+      } catch (polErr) {
+        // Non-blocking fallback
+      }
+
+      // Fetch latest delivery GPS location if assigned
+      let latestDeliveryLocation = null;
+      if (order.assigned_employee_id) {
+        latestDeliveryLocation = await prisma.delivery_locations.findFirst({
+          where: { order_id: order.id, employee_id: order.assigned_employee_id },
+          orderBy: { recorded_at: 'desc' }
+        });
+      }
 
       return res.status(200).json({
         success: true,
         data: {
           ...order,
-          payment_breakdown: breakdown
+          payment_breakdown: breakdown,
+          cancellation_policy: cancellationPolicy,
+          delivery_location: latestDeliveryLocation ? {
+            latitude: Number(latestDeliveryLocation.latitude),
+            longitude: Number(latestDeliveryLocation.longitude),
+            accuracy: latestDeliveryLocation.accuracy ? Number(latestDeliveryLocation.accuracy) : null,
+            heading: latestDeliveryLocation.heading ? Number(latestDeliveryLocation.heading) : null,
+            speed: latestDeliveryLocation.speed ? Number(latestDeliveryLocation.speed) : null,
+            recordedAt: latestDeliveryLocation.recorded_at
+          } : null
         }
       });
     } catch (err) {
@@ -355,6 +429,28 @@ const orderController = {
         success: true,
         message: result.message,
         data: result
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // Owner Get Refund Requests for Cafe
+  // GET /api/v1/cafe/orders/refund-requests
+  async getCafeRefundRequests(req, res, next) {
+    try {
+      const ownerId = req.user.id;
+      const filters = {
+        status: req.query.status,
+        search: req.query.search,
+        page: parseInt(req.query.page) || 1,
+        limit: parseInt(req.query.limit) || 50
+      };
+      const result = await orderCancellationRefundService.getCafeRefundRequests(ownerId, filters);
+      return res.status(200).json({
+        success: true,
+        data: result.requests,
+        pagination: result.pagination
       });
     } catch (err) {
       next(err);

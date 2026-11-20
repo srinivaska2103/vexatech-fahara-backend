@@ -26,9 +26,19 @@ const findOffersByCafe = async (cafeId, filters = {}) => {
     where.offer_type = filters.offerType;
   }
 
+  if (filters.offerCategory && filters.offerCategory !== 'ALL') {
+    where.offer_category = filters.offerCategory;
+  }
+
   const rawOffers = await prisma.menu_offers.findMany({
     where,
     include: {
+      buy_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true }
+      },
+      reward_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true }
+      },
       menu_offer_items: {
         include: {
           menu_items: {
@@ -71,6 +81,12 @@ const findOfferById = async (id, cafeId = null) => {
   const offer = await prisma.menu_offers.findFirst({
     where,
     include: {
+      buy_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true, is_available: true }
+      },
+      reward_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true, is_available: true }
+      },
       menu_offer_items: {
         include: {
           menu_items: {
@@ -105,16 +121,20 @@ const createOffer = async (offerData, itemIds = [], categoryIds = []) => {
       data: offerData
     });
 
-    if (itemIds && itemIds.length > 0) {
-      const itemRows = itemIds.map((itemId) => ({
+    // Deduplicate itemIds and categoryIds to avoid unique constraint violations
+    const uniqueItemIds = Array.isArray(itemIds) ? Array.from(new Set(itemIds.filter(Boolean))) : [];
+    const uniqueCatIds = Array.isArray(categoryIds) ? Array.from(new Set(categoryIds.filter(Boolean))) : [];
+
+    if (uniqueItemIds.length > 0) {
+      const itemRows = uniqueItemIds.map((itemId) => ({
         offer_id: offer.id,
         item_id: itemId
       }));
       await tx.menu_offer_items.createMany({ data: itemRows });
     }
 
-    if (categoryIds && categoryIds.length > 0) {
-      const catRows = categoryIds.map((catId) => ({
+    if (uniqueCatIds.length > 0) {
+      const catRows = uniqueCatIds.map((catId) => ({
         offer_id: offer.id,
         category_id: catId
       }));
@@ -140,18 +160,20 @@ const updateOffer = async (id, offerData, itemIds = null, categoryIds = null) =>
 
     if (itemIds !== null) {
       await tx.menu_offer_items.deleteMany({ where: { offer_id: id } });
-      if (itemIds.length > 0) {
+      const uniqueItemIds = Array.isArray(itemIds) ? Array.from(new Set(itemIds.filter(Boolean))) : [];
+      if (uniqueItemIds.length > 0) {
         await tx.menu_offer_items.createMany({
-          data: itemIds.map((itemId) => ({ offer_id: id, item_id: itemId }))
+          data: uniqueItemIds.map((itemId) => ({ offer_id: id, item_id: itemId }))
         });
       }
     }
 
     if (categoryIds !== null) {
       await tx.menu_offer_categories.deleteMany({ where: { offer_id: id } });
-      if (categoryIds.length > 0) {
+      const uniqueCatIds = Array.isArray(categoryIds) ? Array.from(new Set(categoryIds.filter(Boolean))) : [];
+      if (uniqueCatIds.length > 0) {
         await tx.menu_offer_categories.createMany({
-          data: categoryIds.map((catId) => ({ offer_id: id, category_id: catId }))
+          data: uniqueCatIds.map((catId) => ({ offer_id: id, category_id: catId }))
         });
       }
     }
@@ -190,6 +212,12 @@ const getActiveOffersForCafe = async (cafeId) => {
       end_date: { gte: now }
     },
     include: {
+      buy_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true, is_available: true }
+      },
+      reward_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true, is_available: true }
+      },
       menu_offer_items: true,
       menu_offer_categories: true
     },
@@ -200,18 +228,30 @@ const getActiveOffersForCafe = async (cafeId) => {
 };
 
 // Public discoverable active offers across cafes
-const findPublicActiveOffers = async (limit = 20) => {
+const findPublicActiveOffers = async (limit = 30, offerCategory = null) => {
   const now = new Date();
+  const where = {
+    is_active: true,
+    start_date: { lte: now },
+    end_date: { gte: now },
+    cafes: { status: { in: ['APPROVED', 'ACTIVE'] } }
+  };
+
+  if (offerCategory && offerCategory !== 'ALL') {
+    where.offer_category = offerCategory;
+  }
+
   const offers = await prisma.menu_offers.findMany({
-    where: {
-      is_active: true,
-      start_date: { lte: now },
-      end_date: { gte: now },
-      cafes: { status: 'APPROVED' }
-    },
+    where,
     include: {
       cafes: {
         select: { id: true, name: true, city: true, cover_image: true, category: true }
+      },
+      buy_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true }
+      },
+      reward_item: {
+        select: { id: true, name: true, price: true, image_url: true, food_type: true }
       },
       menu_offer_items: {
         include: {

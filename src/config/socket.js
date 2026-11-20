@@ -11,18 +11,33 @@ const initSocket = (httpServer) => {
   });
 
   io.on('connection', (socket) => {
-    console.log('[WebSocket] Client connected:', socket.id);
-
+    // Join customer notification room
     socket.on('join_user', (userId) => {
       if (userId) {
         const room = `user_${userId}`;
         socket.join(room);
-        console.log(`[WebSocket] Client ${socket.id} joined room: ${room}`);
+      }
+    });
+
+    // Join order live delivery tracking room
+    socket.on('join_order_tracking', (orderId) => {
+      if (orderId) {
+        const room = `order_tracking_${orderId}`;
+        socket.join(room);
+        console.log(`[WebSocket] Client ${socket.id} joined tracking room: ${room}`);
+      }
+    });
+
+    socket.on('leave_order_tracking', (orderId) => {
+      if (orderId) {
+        const room = `order_tracking_${orderId}`;
+        socket.leave(room);
+        console.log(`[WebSocket] Client ${socket.id} left tracking room: ${room}`);
       }
     });
 
     socket.on('disconnect', () => {
-      console.log('[WebSocket] Client disconnected:', socket.id);
+      // Clean disconnect
     });
   });
 
@@ -41,10 +56,19 @@ const emitNotificationToUser = (userId, notification) => {
   try {
     const room = `user_${userId}`;
     io.to(room).emit('new_notification', notification);
-    io.emit('global_notification_event', { userId, notification });
-    console.log(`[WebSocket] Emitted live notification to room: ${room}`);
+    io.to(room).emit('user_notification_event', { userId, notification });
   } catch (err) {
     console.error('[WebSocket] Error emitting notification:', err.message);
+  }
+};
+
+const emitDeliveryLocationUpdate = (orderId, locationData) => {
+  if (!io) return;
+  try {
+    const room = `order_tracking_${orderId}`;
+    io.to(room).emit('delivery_location_update', locationData);
+  } catch (err) {
+    console.error('[WebSocket] Error emitting delivery location:', err.message);
   }
 };
 
@@ -52,4 +76,5 @@ module.exports = {
   initSocket,
   getIO,
   emitNotificationToUser,
+  emitDeliveryLocationUpdate
 };

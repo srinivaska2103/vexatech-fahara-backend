@@ -105,7 +105,7 @@ const initiateRefund = async ({ bookingId, paymentId, refundAmount, reason, init
           }
         });
         refundReferenceId = refundRes.id || refundReferenceId;
-        refundStatus = refundRes.status === 'processed' || refundRes.status === 'created' ? 'SUCCESS' : 'PENDING';
+        refundStatus = refundRes.status === 'processed' ? 'SUCCESS' : (refundRes.status === 'failed' ? 'FAILED' : 'PENDING');
       } catch (rzpErr) {
         console.warn('[Razorpay Refund Warning]:', rzpErr.message);
         refundStatus = 'SUCCESS'; // Default to SUCCESS for sandbox / fallback
@@ -148,7 +148,9 @@ const initiateRefund = async ({ bookingId, paymentId, refundAmount, reason, init
   });
 
   const isFullRefund = (alreadyRefunded + targetRefundAmount) >= totalPaid;
-  const newPaymentStatus = isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+  const newPaymentStatus = refundStatus === 'FAILED' 
+    ? 'REFUND_FAILED' 
+    : (refundStatus === 'PENDING' ? 'REFUND_PROCESSING' : (isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED'));
 
   await prisma.payments.update({
     where: { id: payment.id },
@@ -162,15 +164,31 @@ const initiateRefund = async ({ bookingId, paymentId, refundAmount, reason, init
     });
   }
 
-  // Reverse pending vendor splits if any
+  // Reverse all vendor splits for this payment and ensure settlement_status = 'REVERSED'
   await prisma.payment_splits.updateMany({
-    where: { payment_id: payment.id, settlement_status: 'PENDING' },
-    data: { settlement_status: 'REVERSED', updated_at: new Date() }
+    where: { payment_id: payment.id, settlement_status: { in: ['PENDING', 'PROCESSING', 'NOT_CREATED'] } },
+    data: { transfer_status: 'REVERSED', settlement_status: 'REVERSED', updated_at: new Date() }
   });
 
-  // Send Refund Completed Email & In-App Notifications to User, Cafe Owner, Event Manager, and Admin
+  // Send Refund Notifications to Customer and Admin based on actual refund status
   try {
     if (payment.bookings) {
+      const emailService = require('../utils/emailService');
+      const customerEmail = payment.bookings.users?.email;
+      const customerName = payment.bookings.users?.name || 'Customer';
+      const bookingNumber = payment.bookings.booking_number || payment.id.substring(0, 8).toUpperCase();
+
+      if (customerEmail) {
+        if (refundStatus === 'SUCCESS') {
+          await emailService.sendRefundCompletedEmail(customerEmail, customerName, targetRefundAmount, bookingNumber, refundReferenceId).catch(() => {});
+        } else if (refundStatus === 'PENDING') {
+          await emailService.sendRefundInitiatedEmail(customerEmail, customerName, targetRefundAmount, bookingNumber, refundReferenceId).catch(() => {});
+        } else if (refundStatus === 'FAILED') {
+          await emailService.sendRefundFailedEmail(customerEmail, customerName, targetRefundAmount, bookingNumber, refundReferenceId, 'Gateway response: Failed to process refund').catch(() => {});
+        }
+      }
+
+      // Also dispatch in-app notification & admin email
       const notificationService = require('./notificationService');
       await notificationService.notifyRefundCompleted(
         payment.bookings,
@@ -179,7 +197,7 @@ const initiateRefund = async ({ bookingId, paymentId, refundAmount, reason, init
       );
     }
   } catch (emailErr) {
-    console.error('Failed to send refund completion notification:', emailErr.message);
+    console.error('Failed to send refund notification:', emailErr.message);
   }
 
   return {

@@ -196,18 +196,31 @@ const processRazorpayWebhook = async (req) => {
         console.warn('[Webhook] Failed to insert refund timeline event:', tErr.message);
       }
 
-      if (refundRecord.payment_id) {
+      // Identify associated food order either by direct order_id or via payment
+      let targetFoodOrderId = refundRecord.order_id || null;
+      if (!targetFoodOrderId && refundRecord.payment_id) {
         try {
-          const foodOrderEmailEvents = require('./email/foodOrderEmailEvents');
           const payment = await prisma.payments.findUnique({ where: { id: refundRecord.payment_id } });
           if (payment?.gateway_order_id) {
             const foodOrder = await prisma.food_orders.findFirst({ where: { order_number: payment.gateway_order_id } });
-            if (foodOrder) {
-              if (eventType === 'refund.processed') foodOrderEmailEvents.sendRefundProcessedEmail(foodOrder.id, refundRecord).catch(e => console.error(e));
-              else if (eventType === 'refund.failed') foodOrderEmailEvents.sendRefundFailedEmail(foodOrder.id, refundRecord).catch(e => console.error(e));
-            }
+            if (foodOrder) targetFoodOrderId = foodOrder.id;
           }
-        } catch (e) { console.warn('[Webhook] Food refund email error:', e.message); }
+        } catch (findErr) {
+          console.warn('[Webhook] Could not resolve food order via payment:', findErr.message);
+        }
+      }
+
+      if (targetFoodOrderId) {
+        try {
+          const foodOrderEmailEvents = require('./email/foodOrderEmailEvents');
+          if (eventType === 'refund.processed') {
+            await foodOrderEmailEvents.sendRefundProcessedEmail(targetFoodOrderId, refundRecord);
+          } else if (eventType === 'refund.failed') {
+            await foodOrderEmailEvents.sendRefundFailedEmail(targetFoodOrderId, refundRecord);
+          }
+        } catch (e) {
+          console.warn('[Webhook] Food refund email dispatch error:', e.message);
+        }
       }
     }
 

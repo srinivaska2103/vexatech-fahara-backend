@@ -517,23 +517,38 @@ const getCafePaymentAccount = async (userId, cafeId) => {
   const accountHolder = cafeWithBank.bank_account_holder || user?.account_holder || user?.bank_account_holder || user?.name || '';
   const bankLast4 = cafeWithBank.bank_account_last4 || user?.bank_account_last4 || (user?.account_number ? String(user.account_number).slice(-4) : null);
   const ifsc = cafeWithBank.bank_ifsc || user?.ifsc_code || user?.bank_ifsc || null;
-  const rawStatus = cafeWithBank.bank_verification_status || cafe.bank_verification_status || user?.bank_verification_status || 'PENDING';
+  const rawStatus = cafeWithBank.bank_verification_status || cafe.bank_verification_status || user?.bank_verification_status || 'NOT_SUBMITTED';
 
   const hasBankDetails = Boolean(accountHolder && bankLast4);
-  const isVerified = (String(rawStatus).toUpperCase() === 'VERIFIED' || Boolean(accountHolder && bankLast4)) && hasBankDetails;
+  const normalizedStatus = !hasBankDetails 
+    ? 'NOT_SUBMITTED' 
+    : (['VERIFIED', 'SUBMITTED', 'VERIFICATION_PENDING', 'REJECTED', 'ACTION_REQUIRED'].includes(String(rawStatus).toUpperCase()) 
+        ? String(rawStatus).toUpperCase() 
+        : (String(rawStatus).toUpperCase() === 'PENDING' ? 'VERIFICATION_PENDING' : 'VERIFIED'));
+
+  const isVerified = normalizedStatus === 'VERIFIED';
   const accountId = cafe.payment_account_id || cafe.razorpay_linked_account_id || cafe.razorpay_account_id;
   const settlementStatus = isVerified ? 'ENABLED' : 'DISABLED';
 
+  // Bank name & Account type derived from stored data / IFSC
+  const bankName = user?.bank_name || (cafeWithBank.bank_verification_reference ? 'Connected Bank' : 'Bank');
+  const accountType = 'Current';
+
   return {
     cafeId: cafe.id,
-    bankVerificationStatus: isVerified ? 'VERIFIED' : 'PENDING',
+    bankVerificationStatus: normalizedStatus,
     isVerified: isVerified,
     settlementStatus: settlementStatus,
+    bankName: bankName,
+    accountType: accountType,
     accountHolderName: accountHolder,
     maskedBankAccount: bankLast4 ? `XXXX XXXX ${bankLast4}` : 'Not Configured',
     bankAccountLast4: bankLast4,
     ifsc: ifsc || 'Not Configured',
-    bankVerifiedAt: cafeWithBank.bank_verified_at || cafe.bank_verified_at || user?.bank_verified_at || new Date().toISOString(),
+    bankVerifiedAt: isVerified ? (cafeWithBank.bank_verified_at || cafe.bank_verified_at || user?.bank_verified_at || new Date().toISOString()) : null,
+    submittedAt: cafeWithBank.created_at || cafe.created_at,
+    lastUpdatedAt: cafeWithBank.bank_verified_at || cafe.bank_verified_at || new Date().toISOString(),
+    linkedAccountId: accountId || null
   };
 };
 
@@ -568,6 +583,8 @@ const updateCafePaymentAccount = async (userId, cafeId, bankPayload) => {
   const accountNumber = bankPayload.bankAccountNumber || bankPayload.account_number || bankPayload.accountNumber;
   const confirmAccountNumber = bankPayload.confirmBankAccountNumber || bankPayload.confirm_account_number || bankPayload.confirmAccountNumber || accountNumber;
   const ifsc = bankPayload.ifscCode || bankPayload.ifsc_code || bankPayload.ifsc;
+  const bankName = bankPayload.bankName || bankPayload.bank_name || '';
+  const accountType = bankPayload.accountType || bankPayload.account_type || 'Current';
   const phone = bankPayload.phoneNumber || bankPayload.phone_number || bankPayload.phone;
   const email = bankPayload.email || bankPayload.email_address || bankPayload.emailAddress;
 
@@ -581,6 +598,8 @@ const updateCafePaymentAccount = async (userId, cafeId, bankPayload) => {
     confirmAccountNumber,
     accountHolder,
     ifsc,
+    bankName,
+    accountType,
     phone: phone || user?.phone,
     email: email || user?.email
   });
@@ -591,15 +610,87 @@ const updateCafePaymentAccount = async (userId, cafeId, bankPayload) => {
     cashfreeVendorId: cafe.payment_account_id || verificationResult.accountId,
     cashfreeVendorStatus: verificationResult.success ? 'ACTIVE' : 'PENDING_BANK_DETAILS',
     bankVerificationStatus: verificationResult.bankVerificationStatus,
-    settlementStatus: verificationResult.success ? 'ENABLED' : 'DISABLED',
+    settlementStatus: verificationResult.bankVerificationStatus === 'VERIFIED' ? 'ENABLED' : 'DISABLED',
+    bankName: bankName || 'Connected Bank',
+    accountType: accountType,
     accountHolderName: verificationResult.bankAccountHolder,
     maskedBankAccount: verificationResult.maskedAccountNumber,
     bankAccountLast4: verificationResult.bankAccountLast4,
     ifsc: verificationResult.bankIfsc,
-    bankVerifiedAt: verificationResult.success ? new Date() : null,
+    bankVerifiedAt: verificationResult.bankVerificationStatus === 'VERIFIED' ? new Date() : null,
+    submittedAt: new Date(),
+    lastUpdatedAt: new Date(),
     verificationReference: verificationResult.referenceId,
     message: verificationResult.message
   };
+};
+
+const getAdminBankVerifications = async (query = {}) => {
+  const { status, search, limit = 50, page = 1 } = query;
+  
+  const cafes = await prisma.cafes.findMany({
+    include: {
+      users: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          business_name: true,
+          bank_name: true
+        }
+      }
+    },
+    orderBy: { created_at: 'desc' },
+    take: Number(limit)
+  });
+
+  const records = cafes.map(c => {
+    const rawStatus = c.bank_verification_status || 'NOT_SUBMITTED';
+    const hasDetails = Boolean(c.bank_account_holder && c.bank_account_last4);
+    const verificationStatus = !hasDetails 
+      ? 'NOT_SUBMITTED' 
+      : (['VERIFIED', 'SUBMITTED', 'VERIFICATION_PENDING', 'REJECTED', 'ACTION_REQUIRED'].includes(rawStatus)
+          ? rawStatus 
+          : (rawStatus === 'PENDING' ? 'VERIFICATION_PENDING' : 'VERIFIED'));
+
+    return {
+      restaurantId: c.id,
+      restaurantName: c.name,
+      ownerName: c.users?.name || 'Owner',
+      ownerEmail: c.users?.email,
+      ownerPhone: c.users?.phone,
+      linkedAccountId: c.razorpay_linked_account_id || c.payment_account_id || 'NOT_CREATED',
+      accountHolderName: c.bank_account_holder || 'Not Configured',
+      maskedAccountNumber: c.bank_account_last4 ? `XXXX XXXX ${c.bank_account_last4}` : 'Not Configured',
+      ifscCode: c.bank_ifsc || 'Not Configured',
+      bankName: c.users?.bank_name || 'Bank',
+      accountType: 'Current',
+      verificationStatus: verificationStatus,
+      settlementStatus: verificationStatus === 'VERIFIED' ? 'ENABLED' : 'DISABLED',
+      submittedAt: c.created_at,
+      verifiedAt: c.bank_verified_at,
+      lastUpdatedAt: c.bank_verified_at || c.created_at,
+      gatewaySummary: c.razorpay_account_status === 'ACTIVE' 
+        ? 'Razorpay Linked Account Active & Configured' 
+        : 'Razorpay Route Onboarding Pending'
+    };
+  });
+
+  if (status && status !== 'ALL') {
+    return records.filter(r => r.verificationStatus === status);
+  }
+
+  if (search) {
+    const q = search.toLowerCase();
+    return records.filter(r => 
+      r.restaurantName.toLowerCase().includes(q) || 
+      r.ownerName.toLowerCase().includes(q) || 
+      (r.linkedAccountId && r.linkedAccountId.toLowerCase().includes(q))
+    );
+  }
+
+  return records;
 };
 
 const getDiscoveryCategories = async () => {
@@ -744,6 +835,7 @@ module.exports = {
   updateCafeBusinessHours,
   getCafePaymentAccount,
   updateCafePaymentAccount,
+  getAdminBankVerifications,
   getDiscoveryCategories,
 };
 

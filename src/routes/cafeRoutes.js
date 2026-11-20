@@ -41,6 +41,8 @@ const cafeSchema = Joi.object({
   is_featured: Joi.boolean().allow(null),
 }).unknown(true);
 
+const cafeUpdateSchema = cafeSchema.fork(['name'], (s) => s.optional());
+
 const packageSchema = Joi.object({
   event_type: Joi.string().allow('', null).default('Special Event'),
   package_name: Joi.string().required(),
@@ -79,8 +81,9 @@ router.delete('/packages/:packageId', protect, authorizeRoles('CAFE_OWNER', 'ADM
 router.get('/:id/edit', optionalAuth, cafeController.getCafeById);
 router.get('/:id', optionalAuth, cafeController.getCafeById);
 router.post('/', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), validateRequest(cafeSchema), cafeController.createCafe);
-router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeSchema), cafeController.updateCafe);
-router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeSchema), cafeController.updateCafe);
+router.put('/:id/edit', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeUpdateSchema), cafeController.updateCafe);
+router.put('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeUpdateSchema), cafeController.updateCafe);
+router.patch('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), requireActivePartnerSubscription, validateRequest(cafeUpdateSchema), cafeController.updateCafe);
 router.put('/:id/business-hours', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), requireActivePartnerSubscription, cafeController.updateBusinessHours);
 router.delete('/:id', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), requireActivePartnerSubscription, cafeController.deleteCafe);
 
@@ -89,6 +92,7 @@ router.post('/:cafeId/packages', protect, authorizeRoles('CAFE_OWNER', 'ADMIN'),
 
 
 // --- Payment Account & Bank Verification Routes ---
+router.get('/admin/bank-verifications', protect, authorizeRoles('ADMIN'), cafeController.getAdminBankVerifications);
 router.get('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER', 'ADMIN'), cafeController.getPaymentAccount);
 router.patch('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePaymentAccount);
 router.put('/:cafeId/payment-account', protect, authorizeRoles('CAFE_OWNER', 'RESTAURANT_OWNER', 'WALKING_CAFE_OWNER'), cafeController.updatePaymentAccount);

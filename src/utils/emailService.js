@@ -114,7 +114,7 @@ const sendKycStatusEmail = async (email, name, kycStatus, rejectionReason = null
 
 const sendPayoutCompletedEmail = async (email, name, amount, referenceNumber, partnerType = 'CAFE_OWNER') => {
   const subject = `Payout Transferred - Grab2GO (Ref: ${referenceNumber})`;
-  const text = `Hello ${name},\n\nYour payout of Rs. ${amount} has been successfully processed by Grab2GO Admin.\nReference Number: ${referenceNumber}\n\nThank you,\nFahara Team`;
+  const text = `Hello ${name},\n\nYour payout of Rs. ${amount} has been successfully processed by Grab2GO Admin.\nReference Number: ${referenceNumber}\n\nThank you,\nGrab2GO Team`;
   const html = templates.getPayoutCompletedTemplate(name, amount, referenceNumber, partnerType);
   
   await sendEmail(email, subject, text, html);
@@ -122,15 +122,31 @@ const sendPayoutCompletedEmail = async (email, name, amount, referenceNumber, pa
 
 const sendRefundCompletedEmail = async (email, name, amount, bookingNumber, referenceNumber) => {
   const subject = `Refund Processed & Completed - Grab2GO (Booking #${bookingNumber})`;
-  const text = `Hello ${name},\n\nYour refund of Rs. ${amount} for booking #${bookingNumber} has been successfully processed and transferred via Fahara Payments.\nReference Number: ${referenceNumber}\n\nThank you,\nFahara Team`;
+  const text = `Hello ${name},\n\nYour refund of Rs. ${amount} for booking #${bookingNumber} has been successfully processed and transferred via Razorpay Payments.\nReference Number: ${referenceNumber}\n\nThank you,\nGrab2GO Team`;
   const html = templates.getRefundCompletedTemplate(name, amount, bookingNumber, referenceNumber);
+  
+  await sendEmail(email, subject, text, html);
+};
+
+const sendRefundInitiatedEmail = async (email, name, amount, bookingNumber, referenceNumber) => {
+  const subject = `Refund Initiated - Grab2GO (Booking #${bookingNumber})`;
+  const text = `Hello ${name},\n\nYour refund request of Rs. ${amount} for booking #${bookingNumber} has been initiated through Razorpay Payments.\nReference Number: ${referenceNumber || 'Processing'}\n\nThank you,\nGrab2GO Team`;
+  const html = templates.getRefundInitiatedTemplate(name, amount, bookingNumber, referenceNumber);
+  
+  await sendEmail(email, subject, text, html);
+};
+
+const sendRefundFailedEmail = async (email, name, amount, bookingNumber, referenceNumber, errorReason) => {
+  const subject = `Refund Status Notice - Grab2GO (Booking #${bookingNumber})`;
+  const text = `Hello ${name},\n\nYour refund of Rs. ${amount} for booking #${bookingNumber} encountered a temporary gateway delay.\nReference Number: ${referenceNumber || 'Under Review'}\n\nThank you,\nGrab2GO Support Team`;
+  const html = templates.getRefundFailedTemplate(name, amount, bookingNumber, referenceNumber, errorReason);
   
   await sendEmail(email, subject, text, html);
 };
 
 const sendBankVerifiedEmail = async (email, name, roleName = 'Partner', maskedAccount = 'XXXX-XXXX') => {
   const subject = `Bank Account Verified & Connected - Grab2GO Payouts`;
-  const text = `Hello ${name},\n\nYour bank account (${maskedAccount}) has been verified and successfully connected to Fahara Payments (Razorpay Route). You are now eligible to receive automated split payouts directly to your bank account.`;
+  const text = `Hello ${name},\n\nYour bank account (${maskedAccount}) has been verified and successfully connected to Grab2GO Payments (Razorpay Route). You are now eligible to receive automated split payouts directly to your bank account.`;
   const html = templates.getBankVerifiedTemplate(name, roleName, maskedAccount);
 
   await sendEmail(email, subject, text, html);
@@ -157,15 +173,60 @@ const sendSettlementCompletedEmail = async ({ email, name, amount, bookingNumber
   if (!email) return;
   const roleTitle = partnerType === 'EVENT_MANAGER' ? 'Event Manager' : 'Cafe Owner';
   const subject = `Settlement Completed - ₹${Number(amount).toFixed(2)} Transferred (Booking #${bookingNumber || 'N/A'})`;
-  const text = `Hello ${name},\n\nYour settlement share of Rs. ${Number(amount).toFixed(2)} for booking #${bookingNumber || 'N/A'} has been completed and transferred via Razorpay Route.\nReference ID: ${referenceNumber}\n\nThank you,\nFahara Team`;
+  const text = `Hello ${name},\n\nYour settlement share of Rs. ${Number(amount).toFixed(2)} for booking #${bookingNumber || 'N/A'} has been completed and transferred via Razorpay Route.\nReference ID: ${referenceNumber}\n\nThank you,\nGrab2GO Team`;
   const html = templates.getSettlementCompletedTemplate(name, amount, bookingNumber, referenceNumber, partnerType, entityName);
 
   await sendEmail(email, subject, text, html);
 };
 
+const sendSettlementInitiatedEmail = async ({ email, name, amount, bookingNumber, referenceNumber, partnerType = 'CAFE', entityName = '' }) => {
+  if (!email) return;
+  const subject = `Settlement Processing - ₹${Number(amount).toFixed(2)} (Booking #${bookingNumber || 'N/A'})`;
+  const text = `Hello ${name},\n\nYour settlement payout of Rs. ${Number(amount).toFixed(2)} for booking #${bookingNumber || 'N/A'} has been initiated and is processing through Razorpay Route.\nReference ID: ${referenceNumber || 'Processing'}\n\nThank you,\nGrab2GO Team`;
+  const html = templates.getSettlementInitiatedTemplate(name, amount, bookingNumber, referenceNumber, partnerType, entityName);
+
+  await sendEmail(email, subject, text, html);
+};
+
+const sendSettlementFailedEmail = async ({ email, name, amount, bookingNumber, referenceNumber, partnerType = 'CAFE', entityName = '', failureReason = 'Bank verification required' }) => {
+  if (!email) return;
+  const subject = `Settlement Action Required - Booking #${bookingNumber || 'N/A'}`;
+  const text = `Hello ${name},\n\nYour settlement payout of Rs. ${Number(amount).toFixed(2)} for booking #${bookingNumber || 'N/A'} encountered a temporary delay: ${failureReason}.\n\nThank you,\nGrab2GO Team`;
+  const html = templates.getSettlementFailedTemplate(name, amount, bookingNumber, referenceNumber, partnerType, entityName, failureReason);
+
+  await sendEmail(email, subject, text, html);
+};
+
+const sendWelcomeEmail = async (email, name, roleName = 'Customer', portalUrl = null) => {
+  if (!email) return;
+  const subject = `Welcome to Grab2GO! 🍽️`;
+  const text = `Welcome to Grab2GO, ${name}! Your account is now active.`;
+  const html = templates.getWelcomeTemplate(name, roleName, portalUrl);
+
+  await sendEmail(email, subject, text, html, true);
+};
+
+const sendPasswordChangedEmail = async (email, name, portalUrl = null) => {
+  if (!email) return;
+  const subject = `Security Alert: Your Password Was Changed - Grab2GO`;
+  const text = `Hi ${name},\n\nYour Grab2GO account password was updated successfully.`;
+  const html = templates.getPasswordChangedTemplate(name, portalUrl);
+
+  await sendEmail(email, subject, text, html, true);
+};
+
+const sendAdminSystemAlertEmail = async ({ alertType, message, details, source }) => {
+  const adminEmail = getAdminEmail();
+  const subject = `[GRAB2GO ALERT] ${alertType || 'System Alert'}`;
+  const text = `${alertType}\n\n${message}\n\nSource: ${source || 'Backend'}\nDetails:\n${JSON.stringify(details, null, 2)}`;
+  const html = templates.getAdminSystemAlertTemplate({ alertType, message, details, source });
+
+  await sendEmail(adminEmail, subject, text, html, true);
+};
+
 const sendBirthdayPromotionalEmail = async (email, name) => {
   const subject = `🎉 Celebrate Your Birthday with Grab2GO! Special Cafe Offers Inside 🎂`;
-  const text = `Hi ${name || 'Valued Guest'},\n\nYour birthday is just 30 days away! Celebrate your birthday with Fahara and get special birthday offers at cafes.\n\nBook now at https://fahara.in`;
+  const text = `Hi ${name || 'Valued Guest'},\n\nYour birthday is just 30 days away! Celebrate your birthday with Grab2GO and get special birthday offers at cafes.\n\nBook now at https://fahara.in`;
   const html = templates.getBirthdayPromotionalTemplate(name);
 
   await sendEmail(email, subject, text, html);
@@ -388,10 +449,17 @@ module.exports = {
   sendKycStatusEmail,
   sendPayoutCompletedEmail,
   sendRefundCompletedEmail,
+  sendRefundInitiatedEmail,
+  sendRefundFailedEmail,
   sendBankVerifiedEmail,
   sendEntityRejectedEmail,
   sendSupportTicketEmailToAdmin,
   sendSettlementCompletedEmail,
+  sendSettlementInitiatedEmail,
+  sendSettlementFailedEmail,
+  sendWelcomeEmail,
+  sendPasswordChangedEmail,
+  sendAdminSystemAlertEmail,
   sendBirthdayPromotionalEmail,
   sendNewSubscriptionNotificationToAdmin,
   sendSubscriptionCancelledAdminEmail,

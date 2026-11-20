@@ -1,46 +1,46 @@
 const prisma = require('../config/prisma');
 const paymentService = require('./paymentService');
+const { calculateFoodPaymentBreakdown } = require('./foodPaymentCalculationService');
+const { getFinancialMetrics, round2 } = require('./financialCalculationService');
 
-const getSummary = async (ownerId, role) => {
+const getSummary = async (ownerId, role, period = 'all') => {
   const isAdmin = role === 'ADMIN';
 
-  // Aggregate revenue and bookings
-  const bookings = await prisma.bookings.findMany({
-    where: isAdmin ? {} : { cafes: { owner_id: ownerId } },
-    include: { users: true }
+  // Compute unified financial metrics
+  const financialMetrics = await getFinancialMetrics({
+    ownerId,
+    role,
+    period,
+    filter: period
   });
+
+  // Aggregate bookings and food orders
+  const [bookings, foodOrders] = await Promise.all([
+    prisma.bookings.findMany({
+      where: isAdmin ? {} : { cafes: { owner_id: ownerId } },
+      include: { users: true }
+    }),
+    prisma.food_orders.findMany({
+      where: isAdmin ? {} : { cafes: { owner_id: ownerId } },
+      include: { cafes: true, users: true }
+    })
+  ]);
 
   const activeBookings = bookings.filter(b => b.booking_status === 'CONFIRMED' || b.booking_status === 'PENDING').length;
   
-  // Total Revenue = Sum of eligible booking amounts, strictly excluding cancelled and refunded bookings
-  const isEligibleBooking = (b) => {
-    const bStatus = String(b.booking_status || '').toUpperCase();
-    const pStatus = String(b.payment_status || '').toUpperCase();
-    if (['CANCELLED', 'REJECTED', 'DECLINED'].includes(bStatus)) return false;
-    if (['REFUNDED', 'PARTIALLY_REFUNDED', 'FAILED'].includes(pStatus)) return false;
-    const isCompleted = bStatus === 'COMPLETED';
-    const isPaid = ['COMPLETED', 'PAID', 'SUCCESS'].includes(pStatus);
-    const isConfirmedAndPaid = bStatus === 'CONFIRMED' && (isPaid || Number(b.cafe_amount || b.subtotal || 0) === 0);
-    return isCompleted || isPaid || isConfirmedAndPaid;
-  };
-
-  const getCafeNetRevenue = (b) => {
-    let cafeNet = Number(b.cafe_amount || 0);
-    if (cafeNet <= 0) {
-      const calcSub = Number(b.subtotal || b.total || 0);
-      const evAmt = Number(b.event_service_amount || 0);
-      cafeNet = Math.max(0, calcSub - evAmt);
-    }
-    return Math.max(0, cafeNet);
-  };
-
-  const totalRevenue = bookings
-    .filter(isEligibleBooking)
-    .reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
+  const totalRevenue = financialMetrics.total_booking_revenue;
+  const foodGrossRevenue = financialMetrics.total_food_revenue;
+  const foodPlatformFee = financialMetrics.food_fahara_revenue;
+  const foodPartnerPayout = financialMetrics.food_partner_payout;
+  const combinedTotalRevenue = round2(totalRevenue + foodGrossRevenue);
 
   const customerSet = new Set();
   bookings.forEach(b => {
     if (b.customer_id) customerSet.add(b.customer_id);
+  });
+  foodOrders.forEach(o => {
+    if (o.user_id) customerSet.add(o.user_id);
+    else if (o.customer_id) customerSet.add(o.customer_id);
   });
 
   // Also include logged-in users who viewed this owner's cafe(s)
@@ -108,15 +108,17 @@ const getSummary = async (ownerId, role) => {
     const cancelledBookings = bookings.filter(b => (b.booking_status || '').toUpperCase() === 'CANCELLED').length;
     const pendingVerifications = cafes.filter(c => c.status === 'PENDING').length + pendingProfilesCount;
     
-        // Sum actual fahara_service_charge stored per completed/paid/confirmed booking, with 3% subtotal fallback
-        const faharaRevenue = bookings
-          .filter(isSuccessful)
-          .reduce((sum, b) => {
-            const storedFee = Number(b.fahara_service_charge || 0);
-            if (storedFee > 0) return sum + storedFee;
-            const sub = Number(b.subtotal || 0);
-            return sum + Number((sub * 0.03).toFixed(2));
-          }, 0);
+    // Sum actual fahara_service_charge stored per completed/paid/confirmed booking, with 3% subtotal fallback
+    const cafePlatformRevenue = bookings
+      .filter(isSuccessful)
+      .reduce((sum, b) => {
+        const storedFee = Number(b.fahara_service_charge || 0);
+        if (storedFee > 0) return sum + storedFee;
+        const sub = Number(b.subtotal || 0);
+        return sum + Number((sub * 0.03).toFixed(2));
+      }, 0);
+
+    const faharaRevenue = Number((cafePlatformRevenue + foodPlatformFee).toFixed(2));
 
     const growthData = [];
     for (let i = 3; i >= 0; i--) {
@@ -137,12 +139,9 @@ const getSummary = async (ownerId, role) => {
       });
     }
 
-    // Pending payouts = exact sum of un-disbursed partner payouts from paymentService
-    const adminPayoutsResp = await paymentService.getAdminPayouts({});
-    const pendingPayoutsList = adminPayoutsResp.data || [];
-    const pendingPayoutsAmount = pendingPayoutsList
-      .filter(p => p.status !== 'COMPLETED' && p.payout_status !== 'COMPLETED')
-      .reduce((sum, p) => sum + Number(p.payable_amount || p.gross_amount || 0), 0);
+    // Pending payouts and refund amounts computed authoritatively from financialCalculationService
+    const pendingPayoutsAmount = financialMetrics.pending_payouts;
+    const totalRefundAmount = financialMetrics.refunds_settled;
 
     adminExtra = {
       total_cafes: totalCafes,
@@ -150,15 +149,59 @@ const getSummary = async (ownerId, role) => {
       total_cafe_owners: totalCafeOwners,
       total_restaurant_owners: totalRestaurantOwners,
       total_event_managers: totalEventManagers,
-      completed_bookings: completedBookings,
-      cancelled_bookings: cancelledBookings,
-      fahara_revenue: faharaRevenue,
+      completed_bookings: financialMetrics.counts.completed_bookings,
+      confirmed_bookings: financialMetrics.counts.confirmed_bookings,
+      cancelled_bookings: financialMetrics.counts.cancelled_bookings,
+      total_food_orders: financialMetrics.counts.total_food_orders,
+      paid_food_orders: financialMetrics.counts.paid_food_orders,
+      completed_food_orders: financialMetrics.counts.completed_food_orders,
+      cancelled_food_orders: financialMetrics.counts.cancelled_food_orders,
+      total_food_revenue: financialMetrics.total_food_revenue,
+      total_booking_revenue: financialMetrics.total_booking_revenue,
+      gross_booking_value: financialMetrics.gross_booking_value,
+      fahara_revenue: financialMetrics.fahara_revenue,
+      fahara_platform_revenue: financialMetrics.fahara_platform_revenue,
+      cafe_fahara_revenue: financialMetrics.cafe_fahara_revenue,
+      food_fahara_revenue: financialMetrics.food_fahara_revenue,
+      food_partner_payout: financialMetrics.food_partner_payout,
+      cafe_partner_payout: financialMetrics.cafe_partner_revenue,
+      total_partner_payout: financialMetrics.total_partner_payout,
       pending_payouts: pendingPayoutsAmount,
-      refund_amount: 0, // Mock for now
+      refund_amount: totalRefundAmount,
+      refunds_settled: financialMetrics.refunds_settled,
+      refunds_pending: financialMetrics.refunds_pending,
       pending_verifications: pendingVerifications,
       growth_chart: growthData
     };
   }
+
+  const isEligibleBooking = (b) => {
+    const bStatus = String(b.booking_status || '').toUpperCase();
+    const pStatus = String(b.payment_status || '').toUpperCase();
+    if (['CANCELLED', 'REJECTED', 'DECLINED'].includes(bStatus)) return false;
+    if (['REFUNDED', 'PARTIALLY_REFUNDED', 'FAILED'].includes(pStatus)) return false;
+    const isCompleted = bStatus === 'COMPLETED';
+    const isPaid = ['COMPLETED', 'PAID', 'SUCCESS'].includes(pStatus);
+    const isConfirmedAndPaid = bStatus === 'CONFIRMED' && (isPaid || Number(b.cafe_amount || b.subtotal || 0) === 0);
+    return isCompleted || isPaid || isConfirmedAndPaid;
+  };
+
+  const isPaidFoodOrder = (o) => {
+    const pStatus = String(o.payment_status || '').toUpperCase();
+    const oStatus = String(o.order_status || '').toUpperCase();
+    if (['CANCELLED', 'REJECTED'].includes(oStatus)) return false;
+    return pStatus === 'PAID';
+  };
+
+  const getCafeNetRevenue = (b) => {
+    let cafeNet = Number(b.cafe_amount || 0);
+    if (cafeNet <= 0) {
+      const calcSub = Number(b.subtotal || b.total || 0);
+      const evAmt = Number(b.event_service_amount || 0);
+      cafeNet = Math.max(0, calcSub - evAmt);
+    }
+    return Math.max(0, cafeNet);
+  };
 
   // Calculate Trends (Last 30 days vs Previous 30 days)
   const thirtyDaysAgo = new Date();
@@ -222,7 +265,14 @@ const getSummary = async (ownerId, role) => {
     const dayBookings = bookings.filter(b => 
       b.created_at >= startOfDay && b.created_at < endOfDay && isEligibleBooking(b)
     );
-    return dayBookings.reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
+    const dayBookingRev = dayBookings.reduce((sum, b) => sum + getCafeNetRevenue(b), 0);
+
+    const dayFoodOrders = foodOrders.filter(o => 
+      o.created_at >= startOfDay && o.created_at < endOfDay && isPaidFoodOrder(o)
+    );
+    const dayFoodRev = dayFoodOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+
+    return Number((dayBookingRev + dayFoodRev).toFixed(2));
   });
 
   const bookingChartData = last7Days.map(d => {
@@ -427,7 +477,9 @@ const getSummary = async (ownerId, role) => {
     primary_cafe: primaryCafe,
     today_hours: todayHours,
     open_status: openStatus,
-    total_revenue: totalRevenue,
+    total_revenue: combinedTotalRevenue,
+    cafe_revenue: totalRevenue,
+    food_revenue: Number(foodGrossRevenue.toFixed(2)),
     revenue_trend: revenueTrend,
     total_bookings: bookings.length,
     confirmed_bookings: confirmedBookingsCount,

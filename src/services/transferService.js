@@ -185,6 +185,17 @@ const executePaymentSplits = async (paymentId) => {
       continue;
     }
 
+    // Enforce mandatory bank verification before settlement transfer
+    if (split.vendor_type === 'CAFE' && split.vendor_id) {
+      const cafe = await prisma.cafes.findFirst({
+        where: { OR: [{ id: split.vendor_id }, { owner_id: split.vendor_id }] }
+      });
+      if (cafe && String(cafe.bank_verification_status || '').toUpperCase() !== 'VERIFIED') {
+        console.warn(`[TransferService] Skipping settlement for cafe ${cafe.id}: Bank verification status is ${cafe.bank_verification_status}`);
+        continue;
+      }
+    }
+
     const linkedAccountId = split.payment_account_id || split.razorpay_account_id;
     if (linkedAccountId && Number(split.split_amount) > 0) {
       try {
@@ -250,13 +261,73 @@ const checkVendorSettlements = async () => {
       }
     });
 
+    // Also sync from live Razorpay transfers list to auto-match any transfers by source order/payment ID
+    const razorpay = getRazorpayInstance();
+    if (razorpay && typeof razorpay.transfers?.all === 'function') {
+      try {
+        const liveTransfers = await razorpay.transfers.all({ count: 100 });
+        if (liveTransfers && Array.isArray(liveTransfers.items)) {
+          for (const t of liveTransfers.items) {
+            const isSettled = t.settlement_status === 'settled';
+            const isProcessed = t.status === 'processed';
+
+            const matchedPayment = await prisma.payments.findFirst({
+              where: {
+                OR: [
+                  { provider_order_id: t.source },
+                  { gateway_order_id: t.source },
+                  { gateway_payment_id: t.source }
+                ]
+              },
+              include: { payment_splits: true }
+            });
+
+            if (matchedPayment && matchedPayment.payment_splits) {
+              const matchedBooking = matchedPayment.bookings;
+              const isBookingCancelled = matchedBooking && (matchedBooking.booking_status === 'CANCELLED' || matchedBooking.payment_status === 'REFUNDED');
+              const isPaymentRefunded = matchedPayment.status === 'REFUNDED' || matchedPayment.status === 'PARTIALLY_REFUNDED';
+
+              for (const split of matchedPayment.payment_splits) {
+                // If payment or booking is cancelled/refunded, mark split as REVERSED, do not settle or email
+                if (isBookingCancelled || isPaymentRefunded) {
+                  if (split.settlement_status !== 'REVERSED') {
+                    await prisma.payment_splits.update({
+                      where: { id: split.id },
+                      data: { transfer_status: 'REVERSED', settlement_status: 'REVERSED', updated_at: new Date() }
+                    });
+                  }
+                  continue;
+                }
+
+                const updateData = {
+                  provider_transfer_id: t.id,
+                  transfer_status: isProcessed ? 'PROCESSED' : (t.status === 'pending' ? 'PENDING' : split.transfer_status)
+                };
+
+                if (isSettled && split.settlement_status !== 'COMPLETED') {
+                  updateData.settlement_status = 'COMPLETED';
+                  updateData.settled_at = new Date(t.created_at * 1000);
+                  await prisma.payment_splits.update({ where: { id: split.id }, data: updateData });
+                  sendSettlementCompletedEmailForSplit(split.id).catch(() => {});
+                } else if (!isSettled && isProcessed && split.settlement_status === 'PENDING') {
+                  updateData.settlement_status = 'PROCESSING';
+                  await prisma.payment_splits.update({ where: { id: split.id }, data: updateData });
+                }
+              }
+            }
+          }
+        }
+      } catch (liveSyncErr) {
+        console.warn('[SettlementCron] Live Razorpay transfers sync warning:', liveSyncErr.message);
+      }
+    }
+
     if (pendingSplits.length === 0) {
       console.log('[SettlementCron] No pending vendor settlements found.');
       return { updatedCount: 0, totalChecked: 0 };
     }
 
     console.log(`[SettlementCron] Found ${pendingSplits.length} pending split record(s) to verify.`);
-    const razorpay = getRazorpayInstance();
     let updatedCount = 0;
 
     for (const split of pendingSplits) {
@@ -264,6 +335,24 @@ const checkVendorSettlements = async () => {
       if (!payment || payment.status !== 'SUCCESS') {
         // Skip if original payment is cancelled, failed, or not yet paid
         continue;
+      }
+
+      // Check if associated food order is cancelled or refunded
+      if (payment.gateway_order_id) {
+        const fo = await prisma.food_orders.findFirst({
+          where: { order_number: payment.gateway_order_id },
+          select: { order_status: true, payment_status: true }
+        });
+        if (fo && (['CANCELLED', 'REJECTED'].includes(fo.order_status) || fo.payment_status === 'REFUNDED')) {
+          console.log(`[SettlementCron] Skipping settlement for split ${split.id}: Food order ${payment.gateway_order_id} is CANCELLED/REFUNDED.`);
+          if (split.settlement_status !== 'REVERSED') {
+            await prisma.payment_splits.update({
+              where: { id: split.id },
+              data: { transfer_status: 'REVERSED', settlement_status: 'REVERSED', updated_at: new Date() }
+            });
+          }
+          continue;
+        }
       }
 
       let isSettled = false;
@@ -415,12 +504,36 @@ const sendSettlementCompletedEmailForSplit = async (splitId) => {
       return;
     }
 
+    // Safety: If the underlying booking or payment has been cancelled or refunded, NEVER send a settlement completed email!
+    // A customer cancellation/refund is NOT a vendor settlement event.
+    const booking = split.payments?.bookings;
+    if (booking && (booking.booking_status === 'CANCELLED' || booking.payment_status === 'REFUNDED' || booking.payment_status === 'PARTIALLY_REFUNDED')) {
+      console.log(`[SettlementEmail] Skipped sending settlement email for split ${splitId}: Associated booking #${booking.booking_number} is CANCELLED/REFUNDED.`);
+      return;
+    }
+
+    if (split.payments && (split.payments.status === 'REFUNDED' || split.payments.status === 'PARTIALLY_REFUNDED')) {
+      console.log(`[SettlementEmail] Skipped sending settlement email for split ${splitId}: Payment status is ${split.payments.status}.`);
+      return;
+    }
+
+    // Safety: If this payment belongs to a Food Order, verify the Food Order is NOT cancelled or refunded
+    if (split.payments?.gateway_order_id) {
+      const associatedFoodOrder = await prisma.food_orders.findFirst({
+        where: { order_number: split.payments.gateway_order_id },
+        select: { order_status: true, payment_status: true, order_number: true }
+      });
+      if (associatedFoodOrder && (['CANCELLED', 'REJECTED'].includes(associatedFoodOrder.order_status) || associatedFoodOrder.payment_status === 'REFUNDED')) {
+        console.log(`[SettlementEmail] Skipped sending settlement email for split ${splitId}: Associated Food Order #${associatedFoodOrder.order_number} is CANCELLED/REFUNDED.`);
+        return;
+      }
+    }
+
     if (split.vendor_type === 'FAHARA') {
       return; // Platform share does not get vendor emails
     }
 
-    const booking = split.payments?.bookings;
-    const bookingNumber = booking?.booking_number || 'N/A';
+    let bookingNumber = booking?.booking_number || split.payments?.gateway_order_id || 'N/A';
     const referenceNumber = split.provider_transfer_id || split.settlement_id || split.id;
     const amount = Number(split.split_amount);
 
@@ -430,26 +543,46 @@ const sendSettlementCompletedEmailForSplit = async (splitId) => {
     let entityName = '';
 
     if (split.vendor_type === 'CAFE') {
-      const cafe = booking?.cafes;
-      entityName = cafe?.name || '';
-      const ownerId = cafe?.owner_id || split.vendor_id;
-      if (ownerId) {
-        const ownerUser = await prisma.users.findUnique({ where: { id: ownerId } });
-        if (ownerUser) {
-          recipientEmail = ownerUser.email;
-          recipientName = ownerUser.name || 'Cafe Owner';
+      let cafe = booking?.cafes;
+      
+      // If payment has no booking (e.g. food order), look up cafe by vendor_id or payment gateway_order_id
+      if (!cafe && split.vendor_id) {
+        cafe = await prisma.cafes.findUnique({
+          where: { id: split.vendor_id },
+          include: { users: true }
+        });
+      }
+
+      // Check food_orders table if booking is still missing
+      let foodOrder = null;
+      if (!booking && split.payments?.gateway_order_id) {
+        foodOrder = await prisma.food_orders.findFirst({
+          where: { order_number: split.payments.gateway_order_id },
+          include: { cafes: { include: { users: true } } }
+        });
+        if (foodOrder) {
+          bookingNumber = foodOrder.order_number || bookingNumber;
+          if (foodOrder.cafes) {
+            cafe = foodOrder.cafes;
+          }
         }
       }
+
+      entityName = cafe?.name || 'Restaurant / Cafe';
+      const ownerUser = cafe?.users || (cafe?.owner_id ? await prisma.users.findUnique({ where: { id: cafe.owner_id } }) : null) || (split.vendor_id ? await prisma.users.findUnique({ where: { id: split.vendor_id } }) : null);
+      
+      if (ownerUser) {
+        recipientEmail = ownerUser.email;
+        recipientName = ownerUser.name || cafe?.name || 'Cafe Owner';
+      }
     } else if (split.vendor_type === 'EVENT_MANAGER') {
-      const eventService = booking?.event_services;
+      const eventService = booking?.event_services || (split.vendor_id ? await prisma.event_services.findUnique({ where: { id: split.vendor_id }, include: { users: true } }) : null);
       entityName = eventService?.service_name || '';
-      const eventUserId = eventService?.user_id || split.vendor_id;
-      if (eventUserId) {
-        const eventUser = await prisma.users.findUnique({ where: { id: eventUserId } });
-        if (eventUser) {
-          recipientEmail = eventUser.email;
-          recipientName = eventUser.name || 'Event Manager';
-        }
+      const eventUser = eventService?.users || (eventService?.user_id ? await prisma.users.findUnique({ where: { id: eventService.user_id } }) : null) || (split.vendor_id ? await prisma.users.findUnique({ where: { id: split.vendor_id } }) : null);
+      
+      if (eventUser) {
+        recipientEmail = eventUser.email;
+        recipientName = eventUser.name || 'Event Manager';
       }
     }
 

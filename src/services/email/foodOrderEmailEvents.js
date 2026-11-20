@@ -18,12 +18,20 @@ class FoodOrderEmailEvents {
       include: {
         cafes: {
           include: {
-            users: true // cafe owner account
+            users: {
+              include: {
+                roles: true
+              }
+            }
           }
         },
         users: true, // customer account
         order_items: true,
-        assigned_employee: true
+        assigned_employee: true,
+        payment_refunds: {
+          orderBy: { created_at: 'desc' },
+          take: 1
+        }
       }
     });
   }
@@ -282,9 +290,20 @@ class FoodOrderEmailEvents {
       const order = await this.getFullOrder(orderId);
       if (!order) return;
 
-      // 6A. Owner notification
-      const ownerEmail = order.cafes?.users?.email;
-      if (ownerEmail) {
+      // 6A. Restaurant Owner notification
+      // Strictly verify that this notification is delivered to the Restaurant Owner,
+      // avoiding dispatching to unrelated cafe venue owners who do not operate restaurant food deliveries.
+      const ownerUser = order.cafes?.users;
+      const ownerEmail = ownerUser?.email;
+      const ownerRole = (ownerUser?.roles?.name || ownerUser?.user_type || '').toUpperCase();
+      const cafeCategory = (order.cafes?.category || '').toLowerCase();
+      const isRestaurantPartner = ownerRole === 'RESTAURANT_OWNER' 
+        || cafeCategory.includes('restaurant') 
+        || cafeCategory.includes('bistro') 
+        || cafeCategory.includes('dining')
+        || order.order_items?.length > 0; // Grab2Go Food Orders belong to Food/Restaurant partners
+
+      if (ownerEmail && isRestaurantPartner) {
         const eventKey = `order:${order.id}:cancelled:owner`;
         const emailContent = templates.getOrderCancelledOwnerEmail({
           order,

@@ -263,14 +263,34 @@ const getCafeAnalytics = async (ownerId, cafeId, period = '7days', startDateStr 
   const combinedCustomersSet = new Set([...foodCustomerSet, ...bookingCustomerSet]);
   const totalCustomers = combinedCustomersSet.size;
 
-  // 7. Time Progression Series for Charts (Daily buckets across range)
+  // 7. Time Progression Series for Charts (Daily or Hourly buckets across range)
   const timeBucketsMap = {};
-  const currDay = new Date(startDate);
-  while (currDay <= endDate) {
-    const key = currDay.toISOString().split('T')[0];
-    const label = currDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    timeBucketsMap[key] = { date: key, label, foodRevenue: 0, bookingRevenue: 0, totalRevenue: 0, foodOrders: 0, bookings: 0 };
-    currDay.setDate(currDay.getDate() + 1);
+  const isSingleDay = ['today', 'yesterday'].includes(period);
+
+  if (isSingleDay) {
+    // Generate 24 hourly buckets: 00:00 to 23:00
+    for (let h = 0; h < 24; h++) {
+      const hourStr = String(h).padStart(2, '0') + ':00';
+      const displayLabel = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+      timeBucketsMap[hourStr] = {
+        date: hourStr,
+        label: displayLabel,
+        foodRevenue: 0,
+        bookingRevenue: 0,
+        totalRevenue: 0,
+        foodOrders: 0,
+        bookings: 0
+      };
+    }
+  } else {
+    // Multi-day buckets: iterate day by day
+    const currDay = new Date(startDate);
+    while (currDay <= endDate) {
+      const key = currDay.toISOString().split('T')[0];
+      const label = currDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      timeBucketsMap[key] = { date: key, label, foodRevenue: 0, bookingRevenue: 0, totalRevenue: 0, foodOrders: 0, bookings: 0 };
+      currDay.setDate(currDay.getDate() + 1);
+    }
   }
 
   // Populate food orders in timeline
@@ -278,12 +298,16 @@ const getCafeAnalytics = async (ownerId, cafeId, period = '7days', startDateStr 
     const isCancelled = ['CANCELLED', 'REJECTED'].includes(String(o.order_status || '').toUpperCase());
     const isPaid = String(o.payment_status || '').toUpperCase() === 'PAID';
     if (!isCancelled && isPaid) {
-      const dayKey = new Date(o.created_at).toISOString().split('T')[0];
-      if (timeBucketsMap[dayKey]) {
+      const orderDate = new Date(o.created_at);
+      const bucketKey = isSingleDay
+        ? String(orderDate.getHours()).padStart(2, '0') + ':00'
+        : orderDate.toISOString().split('T')[0];
+
+      if (timeBucketsMap[bucketKey]) {
         const amt = Number(o.total_amount || 0);
-        timeBucketsMap[dayKey].foodRevenue += amt;
-        timeBucketsMap[dayKey].totalRevenue += amt;
-        timeBucketsMap[dayKey].foodOrders += 1;
+        timeBucketsMap[bucketKey].foodRevenue += amt;
+        timeBucketsMap[bucketKey].totalRevenue += amt;
+        timeBucketsMap[bucketKey].foodOrders += 1;
       }
     }
   });
@@ -298,17 +322,21 @@ const getCafeAnalytics = async (ownerId, cafeId, period = '7days', startDateStr 
     const isConfirmedFree = bStatus === 'CONFIRMED' && Number(b.subtotal || b.total || 0) === 0;
 
     if (!isCancelled && !isRefunded && (isPaid || isConfirmedFree)) {
-      const dayKey = new Date(b.created_at).toISOString().split('T')[0];
-      if (timeBucketsMap[dayKey]) {
+      const bookingDate = new Date(b.created_at);
+      const bucketKey = isSingleDay
+        ? String(bookingDate.getHours()).padStart(2, '0') + ':00'
+        : bookingDate.toISOString().split('T')[0];
+
+      if (timeBucketsMap[bucketKey]) {
         let cafeNet = Number(b.cafe_amount || 0);
         if (cafeNet <= 0) {
           const calcSub = Number(b.subtotal || b.total || 0);
           const evAmt = Number(b.event_service_amount || 0);
           cafeNet = Math.max(0, calcSub - evAmt);
         }
-        timeBucketsMap[dayKey].bookingRevenue += cafeNet;
-        timeBucketsMap[dayKey].totalRevenue += cafeNet;
-        timeBucketsMap[dayKey].bookings += 1;
+        timeBucketsMap[bucketKey].bookingRevenue += cafeNet;
+        timeBucketsMap[bucketKey].totalRevenue += cafeNet;
+        timeBucketsMap[bucketKey].bookings += 1;
       }
     }
   });

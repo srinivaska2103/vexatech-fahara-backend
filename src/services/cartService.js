@@ -1,8 +1,9 @@
+const giftRewardService = require('./giftRewardService');
 const restaurantAvailabilityService = require('./restaurantAvailabilityService');
 const fulfilmentRepository = require('../repositories/fulfilmentRepository');
 const cartRepository = require('../repositories/cartRepository');
 const offerRepository = require('../repositories/offerRepository');
-const { calculateDiscountForItem } = require('./offerService');
+const { evaluateCartOffers, calculateDiscountForItem } = require('./offerService');
 const prisma = require('../config/prisma');
 
 const cartService = {
@@ -14,6 +15,7 @@ const cartService = {
         id: null,
         cafe: null,
         items: [],
+        appliedOffers: [],
         itemCount: 0,
         subtotal: 0,
         totalSavings: 0,
@@ -22,51 +24,10 @@ const cartService = {
     }
 
     // 1. Fetch active offers for this cafe to calculate live discounts
-    const activeOffers = await offerRepository.getActiveOffersForCafe(cart.cafe_id, new Date());
+    const activeOffers = await offerRepository.getActiveOffersForCafe(cart.cafe_id);
 
-    // 2. Map and re-calculate every item
-    let subtotal = 0;
-    let totalSavings = 0;
-
-    const mappedItems = cart.items.map((cartItem) => {
-      const item = cartItem.menu_item;
-      const originalPrice = Number(item.price);
-      
-      // Calculate active Phase 2 discount
-      const discountCalc = calculateDiscountForItem(item, activeOffers);
-      const finalUnitPrice = discountCalc.discountedPrice;
-      const discountPerUnit = discountCalc.discountAmount;
-      const quantity = cartItem.quantity;
-
-      const itemLineOriginal = originalPrice * quantity;
-      const itemLineTotal = finalUnitPrice * quantity;
-      const itemLineSavings = discountPerUnit * quantity;
-
-      subtotal += itemLineOriginal;
-      totalSavings += itemLineSavings;
-
-      return {
-        id: cartItem.id,
-        menuItemId: item.id,
-        name: item.name,
-        imageUrl: item.image_url,
-        foodType: item.food_type,
-        isAvailable: item.is_available,
-        preparationTime: item.preparation_time,
-        categoryName: item.menu_categories?.name || null,
-        quantity,
-        originalUnitPrice: originalPrice,
-        unitPrice: finalUnitPrice,
-        discountAmount: discountPerUnit,
-        hasDiscount: discountCalc.hasDiscount,
-        appliedOffer: discountCalc.appliedOffer,
-        lineOriginalTotal: Math.round(itemLineOriginal * 100) / 100,
-        lineTotal: Math.round(itemLineTotal * 100) / 100,
-        lineSavings: Math.round(itemLineSavings * 100) / 100
-      };
-    });
-
-    const finalPayableAmount = Math.max(0, Math.round((subtotal - totalSavings) * 100) / 100);
+    // 2. Authoritative evaluation through enhanced evaluateCartOffers engine
+    const evaluation = evaluateCartOffers(cart.items, activeOffers);
 
     return {
       id: cart.id,
@@ -78,11 +39,13 @@ const cartService = {
         coverImage: cart.cafes.cover_image,
         fulfilmentSettings: cart.cafes.cafe_fulfilment_settings
       },
-      items: mappedItems,
-      itemCount: mappedItems.reduce((acc, curr) => acc + curr.quantity, 0),
-      subtotal: Math.round(subtotal * 100) / 100,
-      totalSavings: Math.round(totalSavings * 100) / 100,
-      finalPayableAmount
+      items: evaluation.items,
+      appliedOffers: evaluation.appliedOffers,
+      itemCount: evaluation.items.reduce((acc, curr) => acc + curr.quantity, 0),
+      subtotal: evaluation.subtotal,
+      totalSavings: evaluation.totalSavings,
+      finalPayableAmount: evaluation.finalPayableAmount,
+      rewardEligibility: await giftRewardService.evaluateRewardEligibility(evaluation.subtotal)
     };
   },
 

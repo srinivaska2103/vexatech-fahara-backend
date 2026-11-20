@@ -86,7 +86,8 @@ const prepareSplits = async (booking, totalAmount) => {
   const eventServiceAmount = Number((pricing?.event?.subtotal || 0).toFixed(2));
 
   // 1. Cafe Split
-  const cafeAccountId = cafe?.payment_account_id || cafe?.razorpay_linked_account_id || cafe?.razorpay_account_id;
+  const isCafeBankVerified = String(cafe?.bank_verification_status || '').toUpperCase() === 'VERIFIED';
+  const cafeAccountId = isCafeBankVerified ? (cafe?.payment_account_id || cafe?.razorpay_linked_account_id || cafe?.razorpay_account_id) : null;
   const cafeVendorId = cafe?.owner_id || cafe?.id || null;
   if (cafeAccountId && cafeAmount > 0) {
     razorpaySplits.push({

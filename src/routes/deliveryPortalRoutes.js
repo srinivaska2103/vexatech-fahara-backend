@@ -7,6 +7,7 @@ router.post('/login', fulfilmentController.deliveryLogin);
 router.get('/assigned-orders', fulfilmentController.getAssignedOrders);
 router.get('/orders/:id', fulfilmentController.getDeliveryOrderDetails);
 router.patch('/orders/:id/status', fulfilmentController.updateDeliveryOrderStatus);
+router.post('/orders/:id/location', fulfilmentController.updateDeliveryLocation);
 
 module.exports = router;
 

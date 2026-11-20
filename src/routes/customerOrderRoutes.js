@@ -15,6 +15,7 @@ router.get('/:id/tracking', orderController.getCustomerOrderTracking);
 router.get('/:id/cancellation-policy', orderController.getCancellationPolicy);
 router.get('/:id/refund', orderController.getOrderRefund);
 router.post('/:id/cancel', orderController.cancelCustomerOrder);
+router.post('/:id/refund-request', orderController.cancelCustomerOrder);
 
 module.exports = router;
 

@@ -484,6 +484,11 @@ model users {
   customer_carts             customer_carts?
   food_orders                food_orders[]
   order_cancellations        order_cancellations[]
+  customer_gift_rewards      customer_gift_rewards[]
+  reward_claims              reward_claims[]
+  ticket_distributions       ticket_distribution_history[]
+  audit_logs_performed       gift_reward_audit_logs[] @relation("gift_reward_audit_performed_by")
+  audit_logs_customer        gift_reward_audit_logs[] @relation("gift_reward_audit_customer")
   roles                     roles                      @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
@@ -964,6 +969,8 @@ model menu_items {
   menu_offer_items menu_offer_items[]
   customer_cart_items customer_cart_items[]
   food_order_items    food_order_items[]
+  buy_offers          menu_offers[]   @relation("MenuOffersBuyItem")
+  reward_offers       menu_offers[]   @relation("MenuOffersRewardItem")
 
   @@index([cafe_id], map: "idx_menu_items_cafe")
   @@index([category_id], map: "idx_menu_items_category")
@@ -974,28 +981,49 @@ model menu_items {
 
 
 model menu_offers {
-  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cafe_id             String                  @db.Uuid
-  title               String                  @db.VarChar(160)
-  description         String?
-  offer_type          String                  @default("ITEM") @db.VarChar(30) // ITEM, CATEGORY, RESTAURANT
-  discount_type       String                  @default("PERCENTAGE") @db.VarChar(30) // PERCENTAGE, FIXED_AMOUNT
-  discount_value      Decimal                 @db.Decimal(10, 2)
-  max_discount_amount Decimal?                @db.Decimal(10, 2)
-  applicable_to       String                  @default("ITEM") @db.VarChar(30) // ITEM, CATEGORY, ALL
-  start_date          DateTime                @db.Timestamp(6)
-  end_date            DateTime                @db.Timestamp(6)
-  is_active           Boolean                 @default(true)
-  created_at          DateTime                @default(now()) @db.Timestamp(6)
-  updated_at          DateTime                @default(now()) @updatedAt @db.Timestamp(6)
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cafe_id              String                  @db.Uuid
+  title                String                  @db.VarChar(160)
+  description          String?
+  offer_type           String                  @default("ITEM") @db.VarChar(30) // ITEM, CATEGORY, RESTAURANT
+  offer_category       String?                 @default("PERCENTAGE") @db.VarChar(50) // BUY_X_GET_Y, PERCENTAGE, FLAT, COMBO, FREE_ITEM, CATEGORY
+  discount_type        String                  @default("PERCENTAGE") @db.VarChar(30) // PERCENTAGE, FIXED_AMOUNT
+  discount_value       Decimal                 @db.Decimal(10, 2)
+  max_discount_amount  Decimal?                @db.Decimal(10, 2)
+  applicable_to        String                  @default("ITEM") @db.VarChar(30) // ITEM, CATEGORY, ALL
 
-  cafes               cafes                   @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  menu_offer_items    menu_offer_items[]
+  // Advanced BOGO / Combo / Free Item Fields
+  buy_item_id          String?                 @db.Uuid
+  buy_category_id      String?                 @db.Uuid
+  buy_quantity         Int?                    @default(1)
+  reward_item_id       String?                 @db.Uuid
+  reward_category_id   String?                 @db.Uuid
+  reward_quantity      Int?                    @default(1)
+  reward_discount_type String?                 @default("FREE") @db.VarChar(30) // FREE, PERCENTAGE, FIXED_AMOUNT
+  reward_discount_value Decimal?               @default(100.00) @db.Decimal(10, 2)
+  max_reward_quantity  Int?
+  min_order_value      Decimal?                @default(0.00) @db.Decimal(10, 2)
+  max_redemptions      Int?
+  redemption_count     Int?                    @default(0)
+  combo_price          Decimal?                @db.Decimal(10, 2)
+  terms_and_conditions String?
+
+  start_date           DateTime                @db.Timestamp(6)
+  end_date             DateTime                @db.Timestamp(6)
+  is_active            Boolean                 @default(true)
+  created_at           DateTime                @default(now()) @db.Timestamp(6)
+  updated_at           DateTime                @default(now()) @updatedAt @db.Timestamp(6)
+
+  cafes                cafes                   @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  buy_item             menu_items?             @relation("MenuOffersBuyItem", fields: [buy_item_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reward_item          menu_items?             @relation("MenuOffersRewardItem", fields: [reward_item_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  menu_offer_items     menu_offer_items[]
   menu_offer_categories menu_offer_categories[]
 
   @@index([cafe_id], map: "idx_menu_offers_cafe")
   @@index([cafe_id, is_active], map: "idx_menu_offers_cafe_active")
   @@index([cafe_id, start_date, end_date], map: "idx_menu_offers_dates")
+  @@index([offer_category], map: "idx_menu_offers_category")
 }
 
 model menu_offer_items {
@@ -1081,6 +1109,7 @@ model delivery_employees {
   cafes                cafes              @relation(fields: [cafe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   order_assignments    order_assignments[]
   food_orders          food_orders[]
+  delivery_locations   delivery_locations[]
 
   @@unique([cafe_id, employee_code], map: "uq_delivery_employee_code")
   @@index([cafe_id], map: "idx_delivery_employees_cafe")
@@ -1140,6 +1169,7 @@ model food_orders {
   estimated_preparation_time Int?                  @default(20)
   assigned_employee_id      String?                @db.Uuid
   cancellation_reason       String?
+  applied_offers            Json?                  @default("[]")
 
   created_at                DateTime               @default(now()) @db.Timestamp(6)
   updated_at                DateTime               @default(now()) @updatedAt @db.Timestamp(6)
@@ -1156,6 +1186,10 @@ model food_orders {
   notifications             notifications[]
   order_cancellations       order_cancellations[]
   payment_refunds           payment_refunds[]
+  delivery_locations        delivery_locations[]
+  customer_gift_rewards     customer_gift_rewards[]
+  gift_reward_audit_logs    gift_reward_audit_logs[]
+  reward_claims             reward_claims[]
 
   @@index([customer_id], map: "idx_food_orders_customer")
   @@index([cafe_id], map: "idx_food_orders_cafe")
@@ -1237,4 +1271,341 @@ model email_notifications {
   @@index([status], map: "idx_email_notifications_status")
   @@index([notification_type], map: "idx_email_notifications_type")
   @@index([recipient_email], map: "idx_email_notifications_email")
+}
+
+model delivery_locations {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id    String             @db.Uuid
+  employee_id String             @db.Uuid
+  latitude    Decimal            @db.Decimal(10, 8)
+  longitude   Decimal            @db.Decimal(11, 8)
+  accuracy    Decimal?           @db.Decimal(8, 2)
+  heading     Decimal?           @db.Decimal(6, 2)
+  speed       Decimal?           @db.Decimal(6, 2)
+  recorded_at DateTime           @default(now()) @db.Timestamp(6)
+
+  order       food_orders        @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  employee    delivery_employees @relation(fields: [employee_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_delivery_locations_order")
+  @@index([order_id, recorded_at], map: "idx_delivery_locations_order_time")
+  @@index([employee_id], map: "idx_delivery_locations_employee")
+}
+
+
+model gift_reward_configs {
+  id                      String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                   String                  @db.VarChar(150)
+  description             String?
+  category                String                  @db.VarChar(50) // MOVIE_TICKETS, FREE_FOOD, DISCOUNT_VOUCHER, FREE_DELIVERY, SHOPPING_CARD, SURPRISE_GIFT
+  image_url               String?                 @db.VarChar(500)
+  min_order_value         Decimal                 @default(1500.00) @db.Decimal(10, 2)
+  reward_value            Decimal?                @default(0.00) @db.Decimal(10, 2)
+  tier_name               String?                 @default("Silver Tier") @db.VarChar(100)
+  tier_level              Int?                    @default(1)
+  total_quantity          Int?                    @default(1000)
+  available_quantity      Int?                    @default(1000)
+  claimed_count           Int?                    @default(0)
+  valid_from              DateTime?               @default(now()) @db.Timestamptz(6)
+  valid_until             DateTime?               @db.Timestamptz(6)
+  is_active               Boolean?                @default(true)
+  redemption_instructions String?
+  terms_conditions        String?
+  created_at              DateTime?               @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?               @default(now()) @updatedAt @db.Timestamptz(6)
+
+  customer_gift_rewards   customer_gift_rewards[]
+  gift_reward_audit_logs  gift_reward_audit_logs[]
+
+  @@index([is_active, min_order_value], map: "idx_gift_reward_cfg_active_min")
+}
+
+model customer_gift_rewards {
+  id                      String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reward_config_id        String                  @db.Uuid
+  customer_id             String                  @db.Uuid
+  order_id                String?                 @db.Uuid
+  voucher_code            String                  @unique @db.VarChar(80)
+  status                  String                  @default("AVAILABLE") @db.VarChar(30) // AVAILABLE, REDEEMED, EXPIRED, CANCELLED, REVOKED
+  reward_title            String                  @db.VarChar(150)
+  reward_category         String                  @db.VarChar(50)
+  reward_value            Decimal?                @default(0.00) @db.Decimal(10, 2)
+  image_url               String?                 @db.VarChar(500)
+  min_order_value         Decimal                 @default(0.00) @db.Decimal(10, 2)
+  redemption_instructions String?
+  qr_code_data            String?
+  issued_at               DateTime?               @default(now()) @db.Timestamptz(6)
+  expires_at              DateTime?               @db.Timestamptz(6)
+  redeemed_at             DateTime?               @db.Timestamptz(6)
+  cancelled_at            DateTime?               @db.Timestamptz(6)
+  revocation_reason       String?
+  created_at              DateTime?               @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?               @default(now()) @updatedAt @db.Timestamptz(6)
+
+  reward_config           gift_reward_configs     @relation(fields: [reward_config_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  customer                users                   @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order                   food_orders?            @relation(fields: [order_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  gift_reward_audit_logs  gift_reward_audit_logs[]
+  reward_claims           reward_claims[]
+
+  @@index([customer_id, status], map: "idx_customer_gift_rewards_cust")
+  @@index([order_id], map: "idx_customer_gift_rewards_order")
+  @@index([voucher_code], map: "idx_customer_gift_rewards_voucher")
+}
+
+model gift_reward_audit_logs {
+  id                      String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  action                  String                  @db.VarChar(50) // ISSUED, REDEEMED, REVOKED, CANCELLED, MANUAL_ASSIGN, EXPIRED
+  customer_id             String?                 @db.Uuid
+  order_id                String?                 @db.Uuid
+  reward_id               String?                 @db.Uuid
+  reward_config_id        String?                 @db.Uuid
+  performed_by_id         String?                 @db.Uuid
+  performed_by_role       String?                 @default("SYSTEM") @db.VarChar(50)
+  notes                   String?
+  metadata                Json?                   @default("{}")
+  created_at              DateTime?               @default(now()) @db.Timestamptz(6)
+
+  customer                users?                  @relation("gift_reward_audit_customer", fields: [customer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  performed_by            users?                  @relation("gift_reward_audit_performed_by", fields: [performed_by_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  order                   food_orders?            @relation(fields: [order_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reward                  customer_gift_rewards?  @relation(fields: [reward_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reward_config           gift_reward_configs?    @relation(fields: [reward_config_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+}
+
+
+// ── REWARD CLAIM & MOVIE TICKET DISTRIBUTION MODELS ───────────────────────
+
+model reward_claims {
+  id                      String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  claim_number            String                        @unique @db.VarChar(60) // e.g. CLM-MVI-8921-2026
+  customer_id             String                        @db.Uuid
+  order_id                String?                       @db.Uuid
+  reward_id               String?                       @db.Uuid
+  reward_type             String                        @default("MOVIE_TICKETS") @db.VarChar(50)
+  reward_title            String                        @db.VarChar(160)
+  
+  // Status: TICKET_PENDING, TICKET_SENT, REDEEMED, EXPIRED, CANCELLED
+  status                  String                        @default("TICKET_PENDING") @db.VarChar(40)
+  
+  claimed_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+  ticket_sent_at          DateTime?                     @db.Timestamptz(6)
+  cancelled_at            DateTime?                     @db.Timestamptz(6)
+  cancellation_reason     String?
+  customer_notes          String?
+  metadata                Json?                         @default("{}")
+  created_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                     @default(now()) @updatedAt @db.Timestamptz(6)
+
+  customer                users                         @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order                   food_orders?                  @relation(fields: [order_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reward                  customer_gift_rewards?        @relation(fields: [reward_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  
+  reward_tickets          reward_tickets[]
+  distribution_history    ticket_distribution_history[]
+
+  @@index([customer_id, status], map: "idx_reward_claims_cust_status")
+  @@index([order_id], map: "idx_reward_claims_order")
+  @@index([status], map: "idx_reward_claims_status")
+}
+
+model reward_tickets {
+  id                      String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  claim_id                String                        @db.Uuid
+  ticket_code             String                        @unique @db.VarChar(80) // Unique ticket ID
+  movie_name              String                        @db.VarChar(200)
+  theatre_name            String                        @db.VarChar(200)
+  show_datetime           DateTime?                     @db.Timestamptz(6)
+  show_time_str           String?                       @db.VarChar(80) // e.g. "07:30 PM, Screen 2"
+  seat_details            String                        @db.VarChar(120) // e.g. "Row D - Seats 12, 13 (Gold)"
+  booking_reference       String?                       @db.VarChar(100) // e.g. "BMS-89124-DELHI"
+  instructions            String?                       // e.g. "Show this barcode at box office"
+  
+  // Stored Ticket Files
+  pdf_url                 String?                       @db.VarChar(500)
+  image_url               String?                       @db.VarChar(500)
+  additional_files        Json?                         @default("[]") // Array of { name, url, type }
+  
+  status                  String                        @default("ACTIVE") @db.VarChar(30) // ACTIVE, USED, CANCELLED
+  created_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                     @default(now()) @updatedAt @db.Timestamptz(6)
+
+  claim                   reward_claims                 @relation(fields: [claim_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  distribution_history    ticket_distribution_history[]
+
+  @@index([claim_id], map: "idx_reward_tickets_claim")
+}
+
+model ticket_distribution_history {
+  id                      String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  claim_id                String                        @db.Uuid
+  ticket_id               String?                       @db.Uuid
+  admin_id                String?                       @db.Uuid
+  action                  String                        @db.VarChar(50) // TICKET_SENT, TICKET_RESENT, TICKET_CANCELLED, TICKET_UPDATED
+  channel_email           Boolean                       @default(false)
+  channel_in_app          Boolean                       @default(true)
+  channel_whatsapp        Boolean                       @default(false)
+  notes                   String?
+  metadata                Json?                         @default("{}")
+  created_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+
+  claim                   reward_claims                 @relation(fields: [claim_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ticket                  reward_tickets?               @relation(fields: [ticket_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  admin                   users?                        @relation(fields: [admin_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([claim_id], map: "idx_dist_hist_claim")
+  @@index([admin_id], map: "idx_dist_hist_admin")
+}
+
+
+// ── MARKETING: DYNAMIC BANNERS, PROMOTIONAL OFFERS & CAMPAIGNS ────────────
+
+model banners {
+  id                      String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                    String                        @db.VarChar(150) // Internal admin name
+  title                   String                        @db.VarChar(200) // Main heading
+  highlight_text          String?                       @db.VarChar(100) // Highlighted text / badge
+  subtitle                String?                       @db.VarChar(300) // Description
+  
+  // Media Assets
+  desktop_image_url       String?                       @db.VarChar(500)
+  mobile_image_url        String?                       @db.VarChar(500)
+  
+  // Design & Theming
+  bg_color                String?                       @default("#FFFFFF") @db.VarChar(50)
+  text_color              String?                       @default("#252525") @db.VarChar(50)
+  badge_bg                String?                       @default("#E50914") @db.VarChar(50)
+  banner_layout           String?                       @default("THREE_PART_HERO") @db.VarChar(50) // THREE_PART_HERO, STANDARD
+
+  // Three-Part Hero Composition: Left Promotional Content
+  promotional_label       String?                       @default("BEST DEAL") @db.VarChar(100)
+
+  // Three-Part Hero Composition: Center Food Visual
+  center_image_url        String?                       @db.VarChar(500)
+  mobile_center_image_url String?                       @db.VarChar(500)
+  center_image_size       String?                       @default("contain") @db.VarChar(50)
+  center_image_position   String?                       @default("center") @db.VarChar(50)
+
+  // Three-Part Hero Composition: Right Offer Details
+  discount_value          String?                       @default("50") @db.VarChar(50)
+  discount_symbol         String?                       @default("%") @db.VarChar(10)
+  offer_heading           String?                       @default("OFF") @db.VarChar(100)
+  offer_subtitle          String?                       @db.VarChar(200)
+  offer_text_color        String?                       @default("#E50914") @db.VarChar(50)
+  offer_bg_color          String?                       @default("#FFFFFF") @db.VarChar(50)
+
+  // CTA Action & Custom Styling
+  cta_text                String?                       @default("ORDER NOW") @db.VarChar(80)
+  cta_link                String?                       @default("/customer/food") @db.VarChar(300)
+  cta_bg_color            String?                       @default("#E50914") @db.VarChar(50)
+  cta_text_color          String?                       @default("#FFFFFF") @db.VarChar(50)
+  
+  // Positioning & Ordering
+  position                String                        @default("HOMEPAGE_HERO") @db.VarChar(50) // HOMEPAGE_HERO, FOOD_HERO, CAFE_HERO, POPUP
+  display_order           Int                           @default(0)
+  
+  // Status: ACTIVE, INACTIVE, SCHEDULED, EXPIRED
+  status                  String                        @default("ACTIVE") @db.VarChar(30)
+  is_active               Boolean                       @default(true)
+  
+  // Scheduling Validity
+  start_date              DateTime?                     @db.Timestamptz(6)
+  end_date                DateTime?                     @db.Timestamptz(6)
+  
+  // Campaign & Offer Linkage
+  campaign_id             String?                       @db.Uuid
+  offer_id                String?                       @db.Uuid
+  
+  // Analytics
+  impressions_count       Int                           @default(0)
+  clicks_count            Int                           @default(0)
+  
+  created_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                     @default(now()) @updatedAt @db.Timestamptz(6)
+
+  campaign                marketing_campaigns?          @relation(fields: [campaign_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  offer                   promotional_offers?           @relation(fields: [offer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([position, is_active], map: "idx_banners_position_active")
+  @@index([display_order], map: "idx_banners_display_order")
+}
+
+model promotional_offers {
+  id                      String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                   String                        @db.VarChar(150)
+  offer_code              String                        @unique @db.VarChar(50) // e.g. GRAB20, BOGOFOOD, FREEDEL
+  description             String?
+  
+  // Offer Type: PERCENTAGE_DISCOUNT, FIXED_DISCOUNT, FREE_DELIVERY, BOGO, FREE_GIFT
+  offer_type              String                        @default("PERCENTAGE_DISCOUNT") @db.VarChar(50)
+  
+  // Discount & Threshold Parameters
+  discount_value          Decimal                       @default(0.00) @db.Decimal(10, 2) // Percentage (e.g. 20) or Flat (e.g. 100)
+  min_order_value         Decimal                       @default(0.00) @db.Decimal(10, 2)
+  max_discount_amount     Decimal?                      @db.Decimal(10, 2) // Cap for percentage discount
+  
+  // Scope & Applicability
+  applicable_type         String                        @default("ALL") @db.VarChar(40) // ALL, RESTAURANTS, CATEGORIES
+  applicable_ids          Json?                         @default("[]") // Array of cafe or category IDs
+  
+  // Customer Eligibility: ALL_CUSTOMERS, NEW_CUSTOMERS, VIP_CUSTOMERS
+  customer_eligibility    String                        @default("ALL_CUSTOMERS") @db.VarChar(40)
+  
+  // Usage Limits
+  total_usage_limit       Int?                          // Total overall redeems allowed
+  usage_per_customer      Int                           @default(1)
+  current_usage_count     Int                           @default(0)
+  
+  // Scheduling & Status
+  is_active               Boolean                       @default(true)
+  status                  String                        @default("ACTIVE") @db.VarChar(30)
+  start_date              DateTime?                     @db.Timestamptz(6)
+  end_date                DateTime?                     @db.Timestamptz(6)
+  
+  // Analytics
+  orders_generated_count  Int                           @default(0)
+  total_revenue_generated Decimal                       @default(0.00) @db.Decimal(12, 2)
+  
+  created_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                     @default(now()) @updatedAt @db.Timestamptz(6)
+
+  banners                 banners[]
+  campaigns               marketing_campaigns[]
+
+  @@index([offer_code], map: "idx_promotional_offers_code")
+  @@index([is_active, status], map: "idx_promotional_offers_active")
+}
+
+model marketing_campaigns {
+  id                      String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                    String                        @db.VarChar(160) // e.g. "Weekend Feast Festival 2026"
+  description             String?
+  campaign_code           String                        @unique @db.VarChar(60) // e.g. CMP-WKND-2026
+  
+  offer_id                String?                       @db.Uuid
+  
+  // Scheduling & Status: DRAFT, ACTIVE, PAUSED, COMPLETED
+  status                  String                        @default("ACTIVE") @db.VarChar(30)
+  is_active               Boolean                       @default(true)
+  start_date              DateTime?                     @db.Timestamptz(6)
+  end_date                DateTime?                     @db.Timestamptz(6)
+  
+  // Target Channels
+  channel_homepage        Boolean                       @default(true)
+  channel_food_page       Boolean                       @default(true)
+  channel_push_notify     Boolean                       @default(false)
+  
+  // Aggregated Analytics
+  total_impressions       Int                           @default(0)
+  total_clicks            Int                           @default(0)
+  total_conversions       Int                           @default(0)
+  total_revenue           Decimal                       @default(0.00) @db.Decimal(12, 2)
+  
+  created_at              DateTime?                     @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                     @default(now()) @updatedAt @db.Timestamptz(6)
+
+  offer                   promotional_offers?           @relation(fields: [offer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  banners                 banners[]
+
+  @@index([status, is_active], map: "idx_campaigns_status")
 }

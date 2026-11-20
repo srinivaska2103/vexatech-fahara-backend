@@ -1,12 +1,14 @@
+const giftRewardService = require('./giftRewardService');
 const restaurantAvailabilityService = require('./restaurantAvailabilityService');
 const prisma = require('../config/prisma');
 const orderRepository = require('../repositories/orderRepository');
 const cartRepository = require('../repositories/cartRepository');
 const fulfilmentRepository = require('../repositories/fulfilmentRepository');
 const offerRepository = require('../repositories/offerRepository');
-const { calculateDiscountForItem } = require('./offerService');
+const { evaluateCartOffers, calculateDiscountForItem } = require('./offerService');
 const { calculateFoodPaymentBreakdown } = require('./foodPaymentCalculationService');
 const foodOrderEmailEvents = require('./email/foodOrderEmailEvents');
+const { emitDeliveryLocationUpdate } = require('../config/socket');
 
 // Valid status transitions for Takeaway
 const TAKEAWAY_TRANSITIONS = {
@@ -116,52 +118,53 @@ const orderService = {
     }
 
     // Server-side price recalculation & item availability validation
-    const activeOffers = await offerRepository.getActiveOffersForCafe(cafeId, new Date());
+    const activeOffers = await offerRepository.getActiveOffersForCafe(cafeId);
 
-    let calculatedSubtotal = 0;
-    let calculatedDiscount = 0;
-    let maxPrepTime = settings.estimated_pickup_time_minutes || 20;
-
-    const orderItemsPayload = [];
-
+    // Revalidate availability for each cart item
     for (const cartItem of cart.items) {
-      const menuItem = cartItem.menu_item;
-
-      // Revalidate availability
-      if (!menuItem.is_available) {
-        const error = new Error(`Item "${menuItem.name}" is no longer available. Please update your cart.`);
+      if (!cartItem.menu_item.is_available) {
+        const error = new Error(`Item "${cartItem.menu_item.name}" is no longer available. Please update your cart.`);
         error.statusCode = 400;
         throw error;
       }
+    }
 
-      const originalUnitPrice = Number(menuItem.price);
-      const discountCalc = calculateDiscountForItem(menuItem, activeOffers);
-      const finalUnitPrice = discountCalc.discountedPrice;
-      const discountPerUnit = discountCalc.discountAmount;
-      const quantity = cartItem.quantity;
+    // Comprehensive cart evaluation using authoritative offer engine
+    const evaluation = evaluateCartOffers(cart.items, activeOffers);
 
-      const lineTotal = Math.round(finalUnitPrice * quantity * 100) / 100;
-      const lineOriginal = Math.round(originalUnitPrice * quantity * 100) / 100;
-      const lineSavings = Math.round(discountPerUnit * quantity * 100) / 100;
+    let maxPrepTime = settings.estimated_pickup_time_minutes || 20;
+    const orderItemsPayload = [];
 
-      calculatedSubtotal += lineOriginal;
-      calculatedDiscount += lineSavings;
+    for (const evaluatedItem of evaluation.items) {
+      if (evaluatedItem.preparationTime && evaluatedItem.preparationTime > maxPrepTime) {
+        maxPrepTime = evaluatedItem.preparationTime;
+      }
 
-      if (menuItem.preparation_time && menuItem.preparation_time > maxPrepTime) {
-        maxPrepTime = menuItem.preparation_time;
+      const isFreeReward = Boolean(evaluatedItem.isFreeReward);
+      const rewardQty = Number(evaluatedItem.rewardQuantity || 0);
+
+      // Create snapshot title that clearly indicates offer status for preparation and receipt integrity
+      let itemNameSnapshot = evaluatedItem.name;
+      if (isFreeReward && rewardQty > 0) {
+        itemNameSnapshot = `${evaluatedItem.name} (${rewardQty}x FREE REWARD)`;
+      } else if (evaluatedItem.appliedOffer?.title) {
+        itemNameSnapshot = `${evaluatedItem.name} (${evaluatedItem.appliedOffer.title})`;
       }
 
       orderItemsPayload.push({
-        menu_item_id: menuItem.id,
-        item_name_snapshot: menuItem.name,
-        item_image_snapshot: menuItem.image_url,
-        unit_price_snapshot: originalUnitPrice,
-        quantity,
-        discount_snapshot: discountPerUnit,
-        final_unit_price: finalUnitPrice,
-        line_total: lineTotal
+        menu_item_id: evaluatedItem.menuItemId,
+        item_name_snapshot: itemNameSnapshot,
+        item_image_snapshot: evaluatedItem.imageUrl,
+        unit_price_snapshot: evaluatedItem.originalUnitPrice,
+        quantity: evaluatedItem.quantity,
+        discount_snapshot: evaluatedItem.discountAmount,
+        final_unit_price: evaluatedItem.unitPrice,
+        line_total: evaluatedItem.lineTotal
       });
     }
+
+    const calculatedSubtotal = evaluation.subtotal;
+    const calculatedDiscount = evaluation.totalSavings;
 
     // Fulfilment minimum amount validations
     const netFoodTotal = calculatedSubtotal - calculatedDiscount;
@@ -224,7 +227,8 @@ const orderService = {
         pickup_date: orderType === 'TAKEAWAY' ? pickupDate : null,
         pickup_time: orderType === 'TAKEAWAY' ? pickupTime : null,
         delivery_instructions: deliveryInstructions?.trim() || null,
-        estimated_preparation_time: maxPrepTime
+        estimated_preparation_time: maxPrepTime,
+        applied_offers: evaluation.appliedOffers || []
       };
 
       const order = await orderRepository.createFoodOrder(
@@ -234,62 +238,23 @@ const orderService = {
         tx
       );
 
-      // Clear the customer's cart
-      await cartRepository.clearCartItems(cart.id);
+      // Increment redemption_count for applied offers atomically
+      if (evaluation.appliedOffers && evaluation.appliedOffers.length > 0) {
+        for (const appOff of evaluation.appliedOffers) {
+          await tx.menu_offers.update({
+            where: { id: appOff.id },
+            data: { redemption_count: { increment: 1 } }
+          }).catch(e => console.error('[OrderService] Could not increment redemption count:', e.message));
+        }
+      }
+
+      // NOTE: Cart items are retained until online payment is successfully verified.
+      // Once verifyFoodOrderPayment succeeds, the cart is cleared.
 
       return order;
     });
 
     const fullOrder = await orderRepository.findOrderById(createdOrder.id);
-
-    // Trigger EMAIL 1: New order email to restaurant owner (idempotent, background)
-    foodOrderEmailEvents.sendNewOrderEmail(createdOrder.id).catch(err => {
-      console.error('[OrderService] sendNewOrderEmail non-blocking error:', err.message);
-    });
-
-    // Notify Restaurant Owner & Admin of new food order
-    try {
-      const notificationService = require('./notificationService');
-      const cafeOwner = await prisma.cafes.findUnique({
-        where: { id: cafeId },
-        select: { owner_id: true, name: true }
-      });
-      if (cafeOwner?.owner_id) {
-        await notificationService.createUnifiedNotification({
-          userId: cafeOwner.owner_id,
-          cafeId: cafeId,
-          orderId: createdOrder.id,
-          category: 'FOOD_ORDER',
-          priority: 'HIGH',
-          type: 'NEW_ORDER',
-          title: 'New Food Order Received',
-          message: `You have received a new ${orderType.toLowerCase().replace('_', ' ')} order #${fullOrder.order_number} from ${customerName} (₹${Number(finalTotalAmount).toFixed(2)}).`,
-          metadata: { orderId: createdOrder.id, orderNumber: fullOrder.order_number, total: finalTotalAmount, orderType }
-        });
-      }
-
-      // Also notify platform Admin
-      const adminUsers = await prisma.users.findMany({
-        where: { roles: { name: 'ADMIN' } },
-        select: { id: true }
-      });
-      for (const admin of adminUsers) {
-        await notificationService.createUnifiedNotification({
-          userId: admin.id,
-          cafeId: cafeId,
-          orderId: createdOrder.id,
-          category: 'FOOD_ORDER',
-          priority: 'HIGH',
-          type: 'NEW_ORDER',
-          title: 'Platform Food Order Placed',
-          message: `Customer ${customerName} placed a new order #${fullOrder.order_number} at ${cafeOwner?.name || 'Cafe'} (₹${Number(finalTotalAmount).toFixed(2)}).`,
-          metadata: { orderId: createdOrder.id, orderNumber: fullOrder.order_number }
-        }).catch(() => null);
-      }
-    } catch (orderNotifErr) {
-      console.error('[OrderService] Order notification error:', orderNotifErr.message);
-    }
-
     return fullOrder;
   },
 
@@ -522,8 +487,69 @@ const orderService = {
         }
       });
 
+      // Broadcast order status change to live tracking room
+      emitDeliveryLocationUpdate(orderId, {
+        orderId,
+        orderStatus: newStatus,
+        updatedAt: new Date().toISOString()
+      });
+
       return updated;
     });
+  },
+
+  // 4b. Record and Broadcast Real-time Driver GPS Location
+  async recordDriverLocation(orderId, employeeId, { latitude, longitude, accuracy, heading, speed }) {
+    const order = await orderRepository.findOrderById(orderId);
+    if (!order) {
+      const error = new Error('Order not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (order.assigned_employee_id !== employeeId) {
+      const error = new Error('You are not authorized to update location for this order');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Do not continuously track after order is completed or cancelled
+    if (['DELIVERED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(order.order_status)) {
+      const error = new Error(`Cannot update location for order in ${order.order_status} status`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Persist GPS location point in database
+    const locationRecord = await prisma.delivery_locations.create({
+      data: {
+        order_id: orderId,
+        employee_id: employeeId,
+        latitude,
+        longitude,
+        accuracy,
+        heading,
+        speed,
+        recorded_at: new Date()
+      }
+    });
+
+    // Broadcast live to customer tracking room
+    const payload = {
+      orderId,
+      employeeId,
+      latitude: Number(locationRecord.latitude),
+      longitude: Number(locationRecord.longitude),
+      accuracy: locationRecord.accuracy ? Number(locationRecord.accuracy) : null,
+      heading: locationRecord.heading ? Number(locationRecord.heading) : null,
+      speed: locationRecord.speed ? Number(locationRecord.speed) : null,
+      recordedAt: locationRecord.recorded_at,
+      orderStatus: order.order_status
+    };
+
+    emitDeliveryLocationUpdate(orderId, payload);
+
+    return payload;
   },
 
   // 5. Customer 10-Minute Order Cancellation with Refund Processing
@@ -560,6 +586,11 @@ const orderService = {
     }
 
     const cancelReasonText = reason?.trim() || 'Cancelled by customer within 10-minute window';
+    // Reverse any issued gift reward upon cancellation
+    giftRewardService.handleOrderCancelledOrRefunded(orderId, cancelReasonText).catch(err => {
+      console.warn('[OrderService] Could not reverse reward on cancellation:', err.message);
+    });
+
 
     // Execute atomic cancellation transaction
     const updatedOrder = await prisma.$transaction(async (tx) => {

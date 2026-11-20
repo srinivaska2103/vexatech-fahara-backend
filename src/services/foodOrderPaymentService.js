@@ -72,9 +72,10 @@ class FoodOrderPaymentService {
 
     // Check Cafe Linked Account for Razorpay Route
     const cafe = order.cafes;
-    const linkedAccountId = cafe?.razorpay_account_id || cafe?.razorpay_linked_account_id || cafe?.payment_account_id;
+    const isBankVerified = String(cafe?.bank_verification_status || '').toUpperCase() === 'VERIFIED';
+    const linkedAccountId = isBankVerified ? (cafe?.razorpay_account_id || cafe?.razorpay_linked_account_id || cafe?.payment_account_id) : null;
 
-    // Optional direct Route transfers payload if linked account exists
+    // Optional direct Route transfers payload if verified linked account exists
     let transfers = undefined;
     if (linkedAccountId && breakdown.restaurantSettlementAmount > 0) {
       transfers = [
@@ -204,9 +205,9 @@ class FoodOrderPaymentService {
             gst_amount: order.tax_amount || 0,
             payment_gateway: "RAZORPAY",
             payment_provider: "RAZORPAY",
-            gateway_order_id: razorpay_order_id || order.order_number,
+            gateway_order_id: order.order_number,
             gateway_payment_id: razorpay_payment_id,
-            provider_order_id: razorpay_order_id,
+            provider_order_id: razorpay_order_id || order.order_number,
             provider_payment_id: razorpay_payment_id,
             status: "SUCCESS",
             paid_at: new Date(),
@@ -218,6 +219,7 @@ class FoodOrderPaymentService {
           where: { id: existingPayment.id },
           data: {
             status: "SUCCESS",
+            gateway_order_id: order.order_number,
             gateway_payment_id: razorpay_payment_id,
             provider_payment_id: razorpay_payment_id,
             paid_at: new Date()
@@ -244,6 +246,17 @@ class FoodOrderPaymentService {
         }
       });
 
+      // Clear customer's cart now that payment is verified
+      const customerCart = await tx.customer_carts.findUnique({
+        where: { customer_id: order.customer_id },
+        select: { id: true }
+      });
+      if (customerCart) {
+        await tx.customer_cart_items.deleteMany({
+          where: { cart_id: customerCart.id }
+        });
+      }
+
       return resOrder;
     });
 
@@ -256,7 +269,16 @@ class FoodOrderPaymentService {
       console.error('[FoodOrderPaymentService] sendPaymentSuccessEmail error:', err.message);
     });
 
-    // Notify Restaurant Owner of successful payment
+    // EMAIL 1: Send New Order notification to restaurant owner on verified payment
+    foodOrderEmailEvents.sendNewOrderEmail(order.id).catch(err => {
+      console.error('[FoodOrderPaymentService] sendNewOrderEmail error:', err.message);
+    });
+
+    // Automatic Gift Reward issuance for verified paid orders
+    const giftRewardService = require('./giftRewardService');
+    giftRewardService.issueRewardForOrder(order.id, order.customer_id).catch(() => null);
+
+    // Notify Restaurant Owner of successful payment & new active food order
     try {
       const notificationService = require('./notificationService');
       const cafeOwner = await prisma.cafes.findUnique({
@@ -268,12 +290,12 @@ class FoodOrderPaymentService {
           userId: cafeOwner.owner_id,
           cafeId: order.cafe_id,
           orderId: order.id,
-          category: 'PAYMENT',
+          category: 'FOOD_ORDER',
           priority: 'HIGH',
-          type: 'PAYMENT_RECEIVED',
-          title: 'Food Order Payment Received',
-          message: `Payment of ₹${Number(order.total_amount).toFixed(2)} for order #${order.order_number} has been verified and captured.`,
-          metadata: { orderId: order.id, amount: Number(order.total_amount), paymentId: razorpay_payment_id }
+          type: 'NEW_ORDER',
+          title: 'New Paid Food Order Received',
+          message: `You have received a new ${order.order_type.toLowerCase().replace('_', ' ')} order #${order.order_number} from ${order.customer_name || 'Customer'} (₹${Number(order.total_amount).toFixed(2)}).`,
+          metadata: { orderId: order.id, orderNumber: order.order_number, total: order.total_amount, orderType: order.order_type }
         });
       }
 
@@ -296,10 +318,10 @@ class FoodOrderPaymentService {
         }).catch(() => null);
       }
     } catch (payNotifErr) {
-      console.error('[FoodOrderPaymentService] Payment notification error:', payNotifErr.message);
+      console.error('[FoodOrderPaymentService] Notification error:', payNotifErr.message);
     }
 
-    // 3. Trigger Razorpay Route Settlement Transfer if linked account configured
+    // 3. Trigger Razorpay Route Settlement Transfer if linked account configured and bank is VERIFIED
     const breakdown = calculateFoodPaymentBreakdown({
       subtotal: Number(order.subtotal),
       discountAmount: Number(order.discount_amount),
@@ -307,9 +329,13 @@ class FoodOrderPaymentService {
     });
 
     const cafe = order.cafes;
-    const linkedAccountId = cafe?.razorpay_account_id || cafe?.razorpay_linked_account_id || cafe?.payment_account_id;
+    const isCafeBankVerified = String(cafe?.bank_verification_status || '').toUpperCase() === 'VERIFIED';
+    const linkedAccountId = isCafeBankVerified ? (cafe?.razorpay_linked_account_id || cafe?.razorpay_account_id || cafe?.payment_account_id) : null;
 
     let transferResult = null;
+    let paymentSplitStatus = 'PENDING';
+    let transferId = null;
+
     if (linkedAccountId && breakdown.restaurantSettlementAmount > 0 && razorpay_payment_id) {
       try {
         transferResult = await razorpayRouteService.createTransfer({
@@ -320,10 +346,50 @@ class FoodOrderPaymentService {
           bookingId: order.id,
           vendorType: 'CAFE'
         });
-        console.log(`[FOOD ORDER ROUTE TRANSFER SUCCESS] orderId: ${order.id}, transferId: ${transferResult.transferId}`);
+        transferId = transferResult?.transferId || null;
+        paymentSplitStatus = transferResult?.status === 'PROCESSED' ? 'PROCESSED' : 'PENDING';
+        console.log(`[FOOD ORDER ROUTE TRANSFER SUCCESS] orderId: ${order.id}, transferId: ${transferId}`);
       } catch (transferErr) {
-        console.error(`[FOOD ORDER ROUTE TRANSFER NOTE] Route transfer pending or skipped: ${transferErr.message}`);
+        console.warn(`[FOOD ORDER ROUTE TRANSFER NOTE] Route transfer pending or scheduled: ${transferErr.message}`);
       }
+    }
+
+    // Ensure payment_splits record exists for vendor settlements dashboard
+    try {
+      const centralPayment = await prisma.payments.findFirst({
+        where: {
+          OR: [
+            { gateway_order_id: order.order_number },
+            { provider_order_id: razorpay_order_id || order.order_number },
+            ...(razorpay_payment_id ? [{ gateway_payment_id: razorpay_payment_id }] : [])
+          ]
+        }
+      });
+
+      if (centralPayment) {
+        const existingSplit = await prisma.payment_splits.findFirst({
+          where: { payment_id: centralPayment.id, vendor_type: 'CAFE' }
+        });
+
+        if (!existingSplit) {
+          await prisma.payment_splits.create({
+            data: {
+              payment_id: centralPayment.id,
+              vendor_type: 'CAFE',
+              vendor_id: cafe?.id || cafe?.owner_id,
+              razorpay_account_id: linkedAccountId,
+              payment_account_id: linkedAccountId,
+              provider_transfer_id: transferId,
+              transfer_status: paymentSplitStatus,
+              split_amount: breakdown.restaurantSettlementAmount || Number(order.subtotal || 0),
+              settlement_status: paymentSplitStatus === 'PROCESSED' ? 'COMPLETED' : 'PENDING',
+              created_at: new Date()
+            }
+          });
+        }
+      }
+    } catch (splitErr) {
+      console.error('[FoodOrderPaymentService] payment_split recording warning:', splitErr.message);
     }
 
     return {

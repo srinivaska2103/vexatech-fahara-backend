@@ -70,8 +70,8 @@ const getEmailHeader = (title, statusTag = null, tagLabel = 'CAFE & EVENT BOOKIN
     </div>
 
     <!-- Title Header Row -->
-    <div style="background-color: #FFFFFF; padding: 28px 32px 12px 32px; text-align: left; border-bottom: 1px solid #FEE2E2;">
-      <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #166534; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.3;">
+    <div style="background-color: #FFFFFF; padding: 24px 32px 14px 32px; text-align: left; border-bottom: 1px solid #FEE2E2;">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 900; color: #1E293B; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.3;">
         ${title}
       </h1>
       ${statusTag ? `<div style="margin-top: 10px;">${statusTag}</div>` : ''}
@@ -391,18 +391,29 @@ const getBookingConfirmedAdminTemplate = (adminName, bookingId, summaryItems, bo
     : `${ADMIN_FRONTEND_URL}/admin/bookings`;
 
   const bodyHtml = `
-    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${adminName},</p>
-    <p style="font-size: 15px; color: #555555;">Booking <strong style="color: #E53935;">#${bookingId}</strong> has been officially confirmed.</p>
-    <p style="font-size: 15px; color: #555555;">Please ensure venue setup and guest services are fully prepared.</p>
+    <div style="background: linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%); border: 1px solid #A7F3D0; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 20px;">🎉</span>
+        <h2 style="margin: 0; font-size: 17px; font-weight: 800; color: #065F46;">New Booking Confirmed &amp; Paid</h2>
+      </div>
+      <p style="margin: 8px 0 0 0; font-size: 14px; color: #047857; line-height: 1.5;">
+        Booking <strong style="color: #065F46;">#${bookingId}</strong> has been confirmed. Customer payment is successfully settled.
+      </p>
+    </div>
+
+    <p style="font-size: 15px; color: #374151; margin-top: 0; font-weight: 600;">Hello ${adminName || 'Admin Team'},</p>
+    <p style="font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 20px;">
+      A guest reservation has been created on Grab2Go. The venue operator has been notified. Below is the operational summary for your administrative records:
+    </p>
   `;
   return generateBaseTemplate({ 
-    title: 'Booking Confirmed', 
+    title: 'Booking Confirmed • Admin Notice', 
     bodyHtml, 
     summaryItems, 
     bookingId: targetId,
     status: 'CONFIRMED',
     ctaLink: ctaUrl, 
-    ctaText: 'View Now!' 
+    ctaText: 'Open in Admin Dashboard' 
   });
 };
 
@@ -489,40 +500,119 @@ const getRefundCompletedTemplate = (name, amount, bookingNumber, referenceNumber
     <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${name},</p>
     <div style="background-color: #ECFDF5; border-left: 4px solid #10B981; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
       <p style="font-size: 16px; color: #065F46; margin: 0; font-weight: 800;">🔄 Refund Processed & Completed!</p>
-      <p style="font-size: 14px; color: #047857; margin: 6px 0 0 0;">Your refund of <strong style="font-size: 18px; color: #065F46;">₹${Number(amount).toFixed(2)}</strong> for booking <strong style="color: #E53935;">#${bookingNumber}</strong> has been successfully processed and marked as completed by the Grab2GO Admin team.</p>
+      <p style="font-size: 14px; color: #047857; margin: 6px 0 0 0;">Your refund of <strong style="font-size: 18px; color: #065F46;">₹${Number(amount).toFixed(2)}</strong> for booking <strong style="color: #E53935;">#${bookingNumber}</strong> has been successfully processed and transferred to your original payment method via Razorpay.</p>
     </div>
-    <p style="font-size: 15px; color: #555555;">The refunded amount should reflect in your original payment method / bank account within 3 to 5 business days.</p>
+    <p style="font-size: 15px; color: #555555;">The refunded amount should reflect in your bank account / card statement within 3 to 5 business days, depending on your issuing bank.</p>
   `;
 
   const summaryItems = [
     { label: 'Booking No', value: bookingNumber },
-    { label: 'Refund Reference', value: referenceNumber },
-    { label: 'Refund Status', value: 'COMPLETED', isHighlight: true },
+    { label: 'Refund Reference ID', value: referenceNumber },
+    { label: 'Refund Status', value: 'REFUNDED ✅', isHighlight: true },
     { label: 'Refunded Amount', value: `₹${Number(amount).toFixed(2)}`, isHighlight: true }
   ];
 
   return generateBaseTemplate({ 
-    title: 'Refund Processed 🔄', 
+    title: 'Refund Processed & Completed 🔄', 
     bodyHtml, 
     summaryItems, 
     status: 'COMPLETED',
     ctaLink: `${FRONTEND_URL}/customer/bookings`,
-    ctaText: 'View Now!'
+    ctaText: 'View Booking History'
+  });
+};
+
+// 8B. Refund Initiated (Customer)
+const getRefundInitiatedTemplate = (name, amount, bookingNumber, referenceNumber) => {
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${name},</p>
+    <div style="background-color: #EFF6FF; border-left: 4px solid #3B82F6; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #1E40AF; margin: 0; font-weight: 800;">⏳ Refund Request Initiated</p>
+      <p style="font-size: 14px; color: #1D4ED8; margin: 6px 0 0 0;">An automatic refund of <strong style="font-size: 18px; color: #1E40AF;">₹${Number(amount).toFixed(2)}</strong> for booking <strong style="color: #E53935;">#${bookingNumber}</strong> has been initiated through Razorpay Payments to your original payment source.</p>
+    </div>
+    <p style="font-size: 15px; color: #555555;">Our banking partners are processing the refund. You will receive an immediate confirmation email once the transfer is finalized.</p>
+  `;
+
+  const summaryItems = [
+    { label: 'Booking No', value: bookingNumber },
+    { label: 'Refund Tracking ID', value: referenceNumber || 'In Progress' },
+    { label: 'Refund Status', value: 'PROCESSING ⏳', isHighlight: true },
+    { label: 'Eligible Refund Amount', value: `₹${Number(amount).toFixed(2)}`, isHighlight: true }
+  ];
+
+  return generateBaseTemplate({ 
+    title: 'Refund Initiated ⏳', 
+    bodyHtml, 
+    summaryItems, 
+    status: 'PENDING',
+    ctaLink: `${FRONTEND_URL}/customer/bookings`,
+    ctaText: 'Track Refund Status'
+  });
+};
+
+// 8C. Refund Failed (Customer Alert)
+const getRefundFailedTemplate = (name, amount, bookingNumber, referenceNumber, errorReason = 'Gateway communication delay') => {
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${name},</p>
+    <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #991B1B; margin: 0; font-weight: 800;">⚠️ Refund Processing Attention Needed</p>
+      <p style="font-size: 14px; color: #B91C1C; margin: 6px 0 0 0;">An automatic refund of <strong style="font-size: 18px; color: #991B1B;">₹${Number(amount).toFixed(2)}</strong> for booking <strong style="color: #E53935;">#${bookingNumber}</strong> encountered a temporary banking delay: <em>${errorReason}</em>.</p>
+    </div>
+    <p style="font-size: 15px; color: #555555;">Our financial support team has been automatically alerted and is resolving this directly with our payment gateway partner to credit your original payment source.</p>
+  `;
+
+  const summaryItems = [
+    { label: 'Booking No', value: bookingNumber },
+    { label: 'Refund Reference ID', value: referenceNumber || 'Under Review' },
+    { label: 'Refund Status', value: 'ACTION NEEDED ⚠️', isHighlight: true },
+    { label: 'Pending Refund Amount', value: `₹${Number(amount).toFixed(2)}`, isHighlight: true }
+  ];
+
+  return generateBaseTemplate({ 
+    title: 'Refund Status Update ⚠️', 
+    bodyHtml, 
+    summaryItems, 
+    status: 'FAILED',
+    ctaLink: `${FRONTEND_URL}/customer/bookings`,
+    ctaText: 'Check Booking Support'
   });
 };
 
 // 9. Support Ticket Notification (Admin)
 const getSupportTicketTemplate = (ticketData) => {
   const bodyHtml = `
-    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi Admin,</p>
-    <div style="background-color: #FFF5F5; border-left: 4px solid #E53935; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
-      <p style="font-size: 16px; color: #252525; margin: 0; font-weight: 800;">📩 New Support Request #${ticketData.ticketId}</p>
-      <p style="font-size: 14px; color: #757575; margin: 6px 0 0 0;">A new support ticket has been submitted by <strong>${ticketData.fullName}</strong> (${ticketData.email}).</p>
+    <div style="background: linear-gradient(135deg, #FFF1F2 0%, #FFF5F5 100%); border: 1px solid #FECDD3; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="vertical-align: top; width: 36px;">
+            <span style="font-size: 24px; line-height: 1;">📩</span>
+          </td>
+          <td style="vertical-align: top; padding-left: 10px;">
+            <span style="display: inline-block; background-color: #E11D48; color: #FFFFFF; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.8px;">
+              Support Priority Ticket
+            </span>
+            <h2 style="margin: 8px 0 0 0; font-size: 17px; font-weight: 800; color: #881337;">
+              New Customer Help Request #${ticketData.ticketId}
+            </h2>
+            <p style="font-size: 13px; color: #9F1239; margin: 4px 0 0 0; line-height: 1.5;">
+              Submitted by <strong>${ticketData.fullName}</strong> (${ticketData.email})
+            </p>
+          </td>
+        </tr>
+      </table>
     </div>
 
-    <div style="background-color: #ffffff; border: 1px solid #FEE2E2; border-radius: 14px; padding: 20px; margin: 20px 0;">
-      <h3 style="margin: 0 0 12px 0; color: #E53935; font-size: 14px; font-weight: 800; text-transform: uppercase;">Customer Message</h3>
-      <div style="background-color: #FFF5F5; padding: 16px; border-radius: 10px; border: 1px solid #FEE2E2; font-size: 14px; color: #252525; line-height: 1.6; white-space: pre-wrap;">${ticketData.message}</div>
+    <p style="font-size: 15px; color: #374151; margin-top: 0; font-weight: 600;">Hello Admin Team,</p>
+    <p style="font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 18px;">
+      A customer inquiry requires support attention. Please review the customer's message below:
+    </p>
+
+    <!-- Clean Customer Message Card -->
+    <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 18px 20px; margin: 18px 0;">
+      <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748B; letter-spacing: 0.8px; margin-bottom: 8px;">
+        Customer Query Message
+      </div>
+      <div style="background-color: #FFFFFF; padding: 16px; border-radius: 10px; border: 1px solid #CBD5E1; font-size: 14px; color: #1E293B; line-height: 1.65; white-space: pre-wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">${ticketData.message}</div>
     </div>
   `;
 
@@ -542,7 +632,7 @@ const getSupportTicketTemplate = (ticketData) => {
     summaryItems, 
     status: 'PENDING',
     ctaLink: `${ADMIN_FRONTEND_URL}/admin/notifications`,
-    ctaText: 'View Now!'
+    ctaText: 'Respond in Admin Panel'
   });
 };
 
@@ -681,18 +771,209 @@ const getSettlementCompletedTemplate = (name, amount, bookingNumber, referenceNu
     summaryItems, 
     status: 'COMPLETED',
     ctaLink,
-    ctaText: 'View Now!'
+    ctaText: 'View Earnings'
+  });
+};
+
+// 13B. Settlement Initiated / Processing (Cafe Owner / Event Manager)
+const getSettlementInitiatedTemplate = (name, amount, bookingNumber, referenceNumber, partnerType = 'CAFE', entityName = '') => {
+  const isEventManager = partnerType === 'EVENT_MANAGER';
+  const partnerRoleTitle = isEventManager ? 'Event Manager' : 'Cafe Owner';
+  const ctaLink = isEventManager 
+    ? `${EM_FRONTEND_URL}/event/revenue` 
+    : `${CAFE_FRONTEND_URL}/event/revenue`;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${name},</p>
+    <div style="background-color: #EFF6FF; border-left: 4px solid #3B82F6; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #1E40AF; margin: 0; font-weight: 800;">⏳ Settlement Transfer Initiated</p>
+      <p style="font-size: 14px; color: #1D4ED8; margin: 6px 0 0 0;">An automated settlement payout of <strong style="font-size: 18px; color: #1E40AF;">₹${Number(amount).toFixed(2)}</strong> for booking <strong style="color: #E53935;">#${bookingNumber || 'N/A'}</strong> has been initiated to your linked bank account via Razorpay Route.</p>
+    </div>
+    <p style="font-size: 15px; color: #555555;">The transfer is currently processing through banking clearing networks. You will receive a final confirmation once the funds are settled.</p>
+  `;
+
+  const summaryItems = [
+    { label: 'Booking Number', value: bookingNumber ? `#${bookingNumber}` : 'N/A' },
+    { label: 'Partner Role', value: partnerRoleTitle },
+    ...(entityName ? [{ label: isEventManager ? 'Event Service' : 'Cafe Venue', value: entityName }] : []),
+    { label: 'Transfer ID', value: referenceNumber || 'In Clearing' },
+    { label: 'Settlement Status', value: 'PROCESSING ⏳', isHighlight: true },
+    { label: 'Payable Amount', value: `₹${Number(amount).toFixed(2)}`, isHighlight: true }
+  ];
+
+  return generateBaseTemplate({ 
+    title: 'Settlement Processing ⏳', 
+    bodyHtml, 
+    summaryItems, 
+    status: 'PENDING',
+    ctaLink,
+    ctaText: 'Track Payout Status'
+  });
+};
+
+// 13C. Settlement Failed / Delayed (Cafe Owner / Event Manager)
+const getSettlementFailedTemplate = (name, amount, bookingNumber, referenceNumber, partnerType = 'CAFE', entityName = '', failureReason = 'Bank account verification required') => {
+  const isEventManager = partnerType === 'EVENT_MANAGER';
+  const partnerRoleTitle = isEventManager ? 'Event Manager' : 'Cafe Owner';
+  const ctaLink = isEventManager 
+    ? `${EM_FRONTEND_URL}/event/revenue` 
+    : `${CAFE_FRONTEND_URL}/event/revenue`;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${name},</p>
+    <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #991B1B; margin: 0; font-weight: 800;">⚠️ Settlement Transfer Notice</p>
+      <p style="font-size: 14px; color: #B91C1C; margin: 6px 0 0 0;">A settlement transfer of <strong style="font-size: 18px; color: #991B1B;">₹${Number(amount).toFixed(2)}</strong> for booking <strong style="color: #E53935;">#${bookingNumber || 'N/A'}</strong> could not be completed: <em>${failureReason}</em>.</p>
+    </div>
+    <p style="font-size: 15px; color: #555555;">Please verify that your bank account details and KYC documents are fully up to date in your partner settings, or contact Grab2GO partner support for manual clearance.</p>
+  `;
+
+  const summaryItems = [
+    { label: 'Booking Number', value: bookingNumber ? `#${bookingNumber}` : 'N/A' },
+    { label: 'Partner Role', value: partnerRoleTitle },
+    ...(entityName ? [{ label: isEventManager ? 'Event Service' : 'Cafe Venue', value: entityName }] : []),
+    { label: 'Reference ID', value: referenceNumber || 'Under Review' },
+    { label: 'Settlement Status', value: 'ACTION NEEDED ⚠️', isHighlight: true },
+    { label: 'Pending Settlement Amount', value: `₹${Number(amount).toFixed(2)}`, isHighlight: true }
+  ];
+
+  return generateBaseTemplate({ 
+    title: 'Settlement Action Required ⚠️', 
+    bodyHtml, 
+    summaryItems, 
+    status: 'FAILED',
+    ctaLink,
+    ctaText: 'Verify Bank Account'
+  });
+};
+
+// 14. Welcome Email (Customer & Partner)
+const getWelcomeTemplate = (name, roleName = 'Customer', portalUrl = null) => {
+  const roleUpper = (roleName || 'Customer').toUpperCase();
+  const isPartner = ['CAFE_OWNER', 'RESTAURANT_OWNER', 'EVENT_MANAGER', 'PARTNER'].includes(roleUpper);
+  const resolvedUrl = portalUrl || (isPartner ? `${CAFE_FRONTEND_URL}/owner/dashboard` : `${FRONTEND_URL}/customer/home`);
+
+  const roleDisplay = isPartner 
+    ? (roleUpper === 'EVENT_MANAGER' ? 'Event Partner' : 'Restaurant & Cafe Partner') 
+    : 'Food & Dining Member';
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Welcome to Grab2GO, ${name || 'Friend'}! 🎉</p>
+    <div style="background-color: #ECFDF5; border-left: 4px solid #10B981; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #065F46; margin: 0; font-weight: 800;">Your Account is Activated</p>
+      <p style="font-size: 14px; color: #047857; margin: 6px 0 0 0;">Thank you for joining Grab2GO as a <strong>${roleDisplay}</strong>. We're thrilled to have you onboard!</p>
+    </div>
+    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
+      ${isPartner 
+        ? 'You can now configure your venue profile, list your delectable menus, accept table reservations and food orders, and track your settlements directly in real-time.' 
+        : 'Explore the finest cafes, reserve tables effortlessly, order your favorite food for pickup or direct delivery, and enjoy exclusive member rewards and discounts.'}
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Member Name', value: name || 'Member' },
+    { label: 'Account Role', value: roleDisplay },
+    { label: 'Platform Access', value: 'ACTIVE ✅', isHighlight: true }
+  ];
+
+  return generateBaseTemplate({
+    title: 'Welcome to Grab2GO! 🍽️',
+    bodyHtml,
+    summaryItems,
+    status: 'CONFIRMED',
+    ctaLink: resolvedUrl,
+    ctaText: isPartner ? 'Access Partner Portal' : 'Start Exploring'
+  });
+};
+
+// 15. Password Changed Confirmation
+const getPasswordChangedTemplate = (name, portalUrl = null) => {
+  const resolvedUrl = portalUrl || `${FRONTEND_URL}/customer/login`;
+
+  const bodyHtml = `
+    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi ${name || 'User'},</p>
+    <div style="background-color: #EFF6FF; border-left: 4px solid #3B82F6; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #1E40AF; margin: 0; font-weight: 800;">🔒 Password Successfully Updated</p>
+      <p style="font-size: 14px; color: #1D4ED8; margin: 6px 0 0 0;">The password for your Grab2GO account has been updated successfully.</p>
+    </div>
+    <p style="font-size: 14px; color: #555555; line-height: 1.6;">
+      If you did not perform this update, please reset your password immediately or reach out to our security team at <a href="mailto:vexatech.connect@gmail.com" style="color: #E53935; font-weight: 700; text-decoration: none;">vexatech.connect@gmail.com</a>.
+    </p>
+  `;
+
+  const summaryItems = [
+    { label: 'Security Status', value: 'Updated Successfully ✅', isHighlight: true },
+    { label: 'Action Time', value: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) }
+  ];
+
+  return generateBaseTemplate({
+    title: 'Security Notice: Password Updated 🔒',
+    bodyHtml,
+    summaryItems,
+    status: 'CONFIRMED',
+    ctaLink: resolvedUrl,
+    ctaText: 'Login to Grab2GO'
+  });
+};
+
+// 16. Admin System Error Alert
+const getAdminSystemAlertTemplate = ({ alertType = 'CRITICAL SYSTEM ALERT', message, details = {}, source = 'Platform Engine' }) => {
+  const bodyHtml = `
+    <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
+      <p style="font-size: 16px; color: #991B1B; margin: 0; font-weight: 900;">🚨 ${alertType}</p>
+      <p style="font-size: 14px; color: #B91C1C; margin: 6px 0 0 0; line-height: 1.5;">${message}</p>
+    </div>
+    <p style="font-size: 14px; color: #374151; font-weight: 600;">System Event Diagnostics:</p>
+    <div style="background-color: #1E293B; color: #F8FAFC; border-radius: 12px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 1.6; overflow-x: auto; margin-bottom: 20px;">
+      ${JSON.stringify(details, null, 2)}
+    </div>
+  `;
+
+  const summaryItems = [
+    { label: 'Alert Source', value: source },
+    { label: 'Severity Level', value: 'HIGH / CRITICAL 🚨', isHighlight: true },
+    { label: 'Timestamp', value: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) }
+  ];
+
+  return generateBaseTemplate({
+    title: `${alertType} 🚨`,
+    bodyHtml,
+    summaryItems,
+    status: 'FAILED',
+    ctaLink: `${ADMIN_FRONTEND_URL}/admin/activity`,
+    ctaText: 'Open Admin Activity Logs'
   });
 };
 
 // 14. New Account Created (Admin Notification)
 const getNewAccountNotificationTemplate = (user) => {
+  const roleLabel = (user.roleName || 'Customer').toUpperCase();
   const bodyHtml = `
-    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hi Admin,</p>
-    <div style="background-color: #FFF5F5; border-left: 4px solid #E53935; padding: 18px; margin: 20px 0; border-radius: 0 10px 10px 0;">
-      <p style="font-size: 16px; color: #252525; margin: 0; font-weight: 800;">👤 New Account Registration</p>
-      <p style="font-size: 14px; color: #757575; margin: 6px 0 0 0;">A new user account (<strong style="color: #E53935;">${user.email}</strong>) has been registered on the platform.</p>
+    <div style="background: linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 100%); border: 1px solid #BFDBFE; border-radius: 16px; padding: 20px 24px; margin-bottom: 24px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="vertical-align: top; width: 36px;">
+            <span style="font-size: 24px; line-height: 1;">👤</span>
+          </td>
+          <td style="vertical-align: top; padding-left: 10px;">
+            <span style="display: inline-block; background-color: #2563EB; color: #FFFFFF; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.8px;">
+              New Registration
+            </span>
+            <h2 style="margin: 8px 0 0 0; font-size: 17px; font-weight: 800; color: #1E3A8A;">
+              New ${roleLabel} Joined Grab2Go
+            </h2>
+            <p style="font-size: 13px; color: #1E40AF; margin: 4px 0 0 0; line-height: 1.5;">
+              Account <strong style="color: #1E3A8A;">${user.email}</strong> is now registered.
+            </p>
+          </td>
+        </tr>
+      </table>
     </div>
+
+    <p style="font-size: 15px; color: #374151; margin-top: 0; font-weight: 600;">Hello Admin,</p>
+    <p style="font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 20px;">
+      A new user profile has signed up on the Grab2Go platform. Details are listed below for verification:
+    </p>
   `;
 
   const summaryItems = [
@@ -703,11 +984,11 @@ const getNewAccountNotificationTemplate = (user) => {
   ];
 
   return generateBaseTemplate({ 
-    title: `New Account: ${user.roleName || 'Customer'}`, 
+    title: `New User: ${user.roleName || 'Customer'}`, 
     bodyHtml, 
     summaryItems, 
     ctaLink: `${ADMIN_FRONTEND_URL}/admin/customers`,
-    ctaText: 'View Now!'
+    ctaText: 'View Customer Directory'
   });
 };
 
@@ -762,37 +1043,61 @@ const getNewSubscriptionAdminTemplate = (data) => {
     activatedAt
   } = data;
 
+  const typeTitle = partnerType === 'RESTAURANT' ? 'Restaurant Partner' : (partnerType === 'EVENT_MANAGER' ? 'Event Partner' : 'Cafe Partner');
+
   const bodyHtml = `
-    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hello System Admin,</p>
-    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
-      A new partner subscription payment has been <strong>successfully verified & activated</strong> via Razorpay. Below are the subscription details:
+    <div style="background: linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%); border: 1px solid #A7F3D0; border-radius: 16px; padding: 22px 26px; margin-bottom: 24px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="vertical-align: top; width: 36px;">
+            <span style="font-size: 26px; line-height: 1;">👑</span>
+          </td>
+          <td style="vertical-align: top; padding-left: 12px;">
+            <span style="display: inline-block; background-color: #059669; color: #FFFFFF; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.8px;">
+              Subscription Activated
+            </span>
+            <h2 style="margin: 8px 0 0 0; font-size: 18px; font-weight: 800; color: #065F46;">
+              New Partner Subscription Verified
+            </h2>
+            <p style="font-size: 13px; color: #047857; margin: 4px 0 0 0; line-height: 1.5;">
+              Monthly recurring plan activated for <strong>${partnerName || 'Partner Venue'}</strong>.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <p style="font-size: 15px; color: #374151; margin-top: 0; font-weight: 600;">Hello System Administrator,</p>
+    <p style="font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 20px;">
+      A partner subscription payment has been authenticated and captured via Razorpay. Below is the operational summary:
     </p>
 
-    <div style="background: #FFF5F5; border: 1px solid #FEE2E2; border-radius: 12px; padding: 20px; margin: 20px 0;">
-      <h3 style="margin-top: 0; color: #E53935; font-size: 16px;">Partner Subscription Information</h3>
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+      <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748B; letter-spacing: 0.8px; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+        Partner &amp; Plan Breakdown
+      </div>
       <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Partner / Business Name:</td><td style="padding: 6px 0; color: #252525; font-weight: 700;">${partnerName || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Partner Type:</td><td style="padding: 6px 0; color: #E53935; font-weight: 700;">${partnerType || 'CAFE'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Owner Name:</td><td style="padding: 6px 0; color: #252525;">${ownerName || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Owner Email:</td><td style="padding: 6px 0; color: #252525;">${email || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Owner Phone:</td><td style="padding: 6px 0; color: #252525;">${phone || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Subscription Plan:</td><td style="padding: 6px 0; color: #252525; font-weight: 700;">${planName || 'Grab2GO PARTNER'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Monthly Fee:</td><td style="padding: 6px 0; color: #059669; font-weight: 700;">₹${price || 1}/month</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Status:</td><td style="padding: 6px 0;"><span style="background-color: #ECFDF5; color: #065F46; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">ACTIVE</span></td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Razorpay Sub ID:</td><td style="padding: 6px 0; font-family: monospace; color: #E53935;">${razorpaySubscriptionId || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Activated Date:</td><td style="padding: 6px 0; color: #252525;">${activatedAt ? new Date(activatedAt).toLocaleString() : new Date().toLocaleString()}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600;">Venue / Partner Name:</td><td style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right;">${partnerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Partner Category:</td><td style="padding: 8px 0; color: #E53935; font-weight: 700; text-align: right; border-top: 1px dashed #F1F5F9;">${typeTitle}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Owner / Manager:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;">${ownerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Email Address:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;">${email || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Phone Contact:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;">${phone || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Selected Plan:</td><td style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right; border-top: 1px dashed #F1F5F9;">${planName || 'Grab2Go Partner'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Recurring Monthly Price:</td><td style="padding: 8px 0; color: #059669; font-weight: 800; text-align: right; border-top: 1px dashed #F1F5F9;">₹${price || 399}/month</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Razorpay Sub ID:</td><td style="padding: 8px 0; font-family: monospace; color: #E53935; font-size: 13px; text-align: right; border-top: 1px dashed #F1F5F9;">${razorpaySubscriptionId || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Activation Timestamp:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;">${activatedAt ? new Date(activatedAt).toLocaleString() : new Date().toLocaleString()}</td></tr>
       </table>
     </div>
   `;
 
   const summaryItems = [
-    { label: 'Partner Type', value: partnerType || 'CAFE' },
-    { label: 'Plan Name', value: planName || 'Grab2GO PARTNER' },
+    { label: 'Partner Type', value: typeTitle },
+    { label: 'Plan Name', value: planName || 'Grab2Go Partner' },
     { label: 'Verified Status', value: 'ACTIVE (Payment Verified)', isHighlight: true }
   ];
 
   return generateBaseTemplate({
-    title: 'New Partner Subscription Activated 🚀',
+    title: 'Partner Subscription Active 🚀',
     bodyHtml,
     summaryItems,
     ctaLink: `${ADMIN_FRONTEND_URL}/admin/subscriptions`,
@@ -817,7 +1122,7 @@ const getSubscriptionCancelledAdminTemplate = (data) => {
     cancelledAt
   } = data;
 
-  const typeTitle = partnerType === 'EVENT_MANAGER' ? 'Event Manager' : (partnerType === 'RESTAURANT' ? 'Restaurant' : 'Cafe');
+  const typeTitle = partnerType === 'EVENT_MANAGER' ? 'Event Partner' : (partnerType === 'RESTAURANT' ? 'Restaurant Partner' : 'Cafe Partner');
   const periodText = periodStart && periodEnd 
     ? `${new Date(periodStart).toLocaleDateString()} – ${new Date(periodEnd).toLocaleDateString()}` 
     : 'Active Period';
@@ -825,37 +1130,51 @@ const getSubscriptionCancelledAdminTemplate = (data) => {
 
   const isStillActive = cancelAtPeriodEnd && status === 'ACTIVE';
   const activeNotice = isStillActive
-    ? `<div style="background-color: #FEF3C7; border: 1px solid #FDE68A; color: #92400E; padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; font-size: 14px;">⚠️ Subscription will remain active until ${endDateText}.</div>`
-    : `<div style="background-color: #FEE2E2; border: 1px solid #FCA5A5; color: #991B1B; padding: 12px 16px; border-radius: 8px; font-weight: 700; margin: 16px 0; font-size: 14px;">🔴 Subscription terminated immediately by Razorpay.</div>`;
+    ? `<div style="background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%); border: 1px solid #FDE68A; color: #92400E; padding: 14px 18px; border-radius: 12px; font-weight: 700; margin: 18px 0; font-size: 13px; line-height: 1.5;">⚠️ <strong>Notice:</strong> Partner retains active privileges until billing cycle ends on <strong>${endDateText}</strong>.</div>`
+    : `<div style="background: linear-gradient(135deg, #FEE2E2 0%, #FEF2F2 100%); border: 1px solid #FCA5A5; color: #991B1B; padding: 14px 18px; border-radius: 12px; font-weight: 700; margin: 18px 0; font-size: 13px; line-height: 1.5;">🔴 <strong>Notice:</strong> Partner subscription was terminated immediately via Razorpay.</div>`;
 
   const bodyHtml = `
-    <p style="font-size: 16px; color: #252525; margin-top: 0; font-weight: 600;">Hello System Admin,</p>
-    <p style="font-size: 15px; color: #555555; line-height: 1.6;">
-      A partner has cancelled their Grab2GO subscription. Below are the verified details from the backend subscription lifecycle:
+    <div style="background: linear-gradient(135deg, #FEF2F2 0%, #FFF5F5 100%); border: 1px solid #FECDD3; border-radius: 16px; padding: 22px 26px; margin-bottom: 24px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="vertical-align: top; width: 36px;">
+            <span style="font-size: 26px; line-height: 1;">⚠️</span>
+          </td>
+          <td style="vertical-align: top; padding-left: 12px;">
+            <span style="display: inline-block; background-color: #DC2626; color: #FFFFFF; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.8px;">
+              Cancellation Notice
+            </span>
+            <h2 style="margin: 8px 0 0 0; font-size: 18px; font-weight: 800; color: #991B1B;">
+              Partner Subscription Cancelled
+            </h2>
+            <p style="font-size: 13px; color: #B91C1C; margin: 4px 0 0 0; line-height: 1.5;">
+              Cancellation triggered for <strong>${partnerName || 'Partner Venue'}</strong>.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <p style="font-size: 15px; color: #374151; margin-top: 0; font-weight: 600;">Hello System Administrator,</p>
+    <p style="font-size: 14px; color: #4B5563; line-height: 1.6; margin-bottom: 18px;">
+      A partner subscription cancellation has been recorded in the platform database. Details are provided below:
     </p>
 
     ${activeNotice}
 
-    <div style="background: #FFF5F5; border: 1px solid #FEE2E2; border-radius: 12px; padding: 20px; margin: 20px 0;">
-      <h3 style="margin-top: 0; color: #E53935; font-size: 16px;">PARTNER DETAILS</h3>
-      <table style="width: 100%; font-size: 14px; border-collapse: collapse; margin-bottom: 16px;">
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Business Type:</td><td style="padding: 6px 0; color: #E53935; font-weight: 700;">${typeTitle}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Business Name:</td><td style="padding: 6px 0; color: #252525; font-weight: 700;">${partnerName || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Owner Name:</td><td style="padding: 6px 0; color: #252525;">${ownerName || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Email:</td><td style="padding: 6px 0; color: #252525;">${email || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Phone:</td><td style="padding: 6px 0; color: #252525;">${phone || 'N/A'}</td></tr>
-      </table>
-
-      <h3 style="margin-top: 16px; color: #E53935; font-size: 16px; border-top: 1px dashed #FEE2E2; padding-top: 16px;">SUBSCRIPTION DETAILS</h3>
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+      <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748B; letter-spacing: 0.8px; margin-bottom: 12px; border-bottom: 1px solid #F1F5F9; padding-bottom: 8px;">
+        Partner &amp; Cancellation Data
+      </div>
       <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Plan:</td><td style="padding: 6px 0; color: #252525; font-weight: 700;">${planName || 'Grab2GO Partner'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Price:</td><td style="padding: 6px 0; color: #252525; font-weight: 700;">₹${price || 299}/month</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Current Status:</td><td style="padding: 6px 0;"><span style="background-color: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${status || 'ACTIVE'}</span></td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Cancellation:</td><td style="padding: 6px 0; color: #DC2626; font-weight: 700;">${cancelAtPeriodEnd ? 'Cancelled at period end' : 'Immediate cancellation'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Current Billing Period:</td><td style="padding: 6px 0; color: #252525;">${periodText}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Subscription End Date:</td><td style="padding: 6px 0; color: #252525; font-weight: 700;">${endDateText}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Razorpay Subscription ID:</td><td style="padding: 6px 0; font-family: monospace; color: #E53935;">${razorpaySubscriptionId || 'N/A'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #757575; font-weight: 600;">Cancellation Requested At:</td><td style="padding: 6px 0; color: #252525;">${cancelledAt ? new Date(cancelledAt).toLocaleString() : new Date().toLocaleString()}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600;">Business Name:</td><td style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right;">${partnerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Business Type:</td><td style="padding: 8px 0; color: #E53935; font-weight: 700; text-align: right; border-top: 1px dashed #F1F5F9;">${typeTitle}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Owner Name:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;">${ownerName || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Email:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;">${email || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Plan:</td><td style="padding: 8px 0; color: #0F172A; font-weight: 700; text-align: right; border-top: 1px dashed #F1F5F9;">${planName || 'Grab2Go Partner'}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Effective Status:</td><td style="padding: 8px 0; color: #0F172A; text-align: right; border-top: 1px dashed #F1F5F9;"><span style="background-color: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${status || 'ACTIVE'}</span></td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">End Date:</td><td style="padding: 8px 0; color: #DC2626; font-weight: 700; text-align: right; border-top: 1px dashed #F1F5F9;">${endDateText}</td></tr>
+        <tr><td style="padding: 8px 0; color: #64748B; font-weight: 600; border-top: 1px dashed #F1F5F9;">Razorpay Sub ID:</td><td style="padding: 8px 0; font-family: monospace; color: #E53935; font-size: 13px; text-align: right; border-top: 1px dashed #F1F5F9;">${razorpaySubscriptionId || 'N/A'}</td></tr>
       </table>
     </div>
   `;
@@ -867,7 +1186,7 @@ const getSubscriptionCancelledAdminTemplate = (data) => {
   ];
 
   return generateBaseTemplate({
-    title: 'Subscription Cancellation Notification',
+    title: 'Subscription Cancellation Alert',
     bodyHtml,
     summaryItems,
     ctaLink: `${ADMIN_FRONTEND_URL}/admin/subscriptions`,
@@ -1264,6 +1583,8 @@ module.exports = {
   getBookingCancelledOwnerTemplate,
   getPayoutCompletedTemplate,
   getRefundCompletedTemplate,
+  getRefundInitiatedTemplate,
+  getRefundFailedTemplate,
   getSupportTicketTemplate,
   getKycStatusTemplate,
   getBankVerifiedTemplate,
@@ -1278,7 +1599,12 @@ module.exports = {
   getPartnerSubscriptionCancellationTemplate,
   getPartnerSubscriptionExpiredTemplate,
   getCafeBroadcastTemplate,
-  getEventManagerBroadcastTemplate
+  getEventManagerBroadcastTemplate,
+  getSettlementInitiatedTemplate,
+  getSettlementFailedTemplate,
+  getWelcomeTemplate,
+  getPasswordChangedTemplate,
+  getAdminSystemAlertTemplate
 };
 
 

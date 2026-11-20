@@ -196,6 +196,9 @@ app.use('/api/v1/loyalty', require('./routes/loyaltyRoutes'));
 app.use('/api/loyalty', require('./routes/loyaltyRoutes'));
 app.use('/api/v1/qr', require('./routes/qrRoutes'));
 app.use('/api/qr', require('./routes/qrRoutes'));
+app.use('/api/v1/gift-rewards', require('./routes/giftRewardRoutes'));
+app.use('/api/v1/marketing', require('./routes/marketingRoutes'));
+app.use('/api/gift-rewards', require('./routes/giftRewardRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {

@@ -284,9 +284,13 @@ const getPublicMenuByCafeId = async (cafeId) => {
       title: o.title,
       description: o.description,
       offerType: o.offer_type,
+      offerCategory: o.offer_category || (o.offer_type === 'BUY_X_GET_Y' ? 'BUY_X_GET_Y' : 'PERCENTAGE'),
       discountType: o.discount_type,
       discountValue: Number(o.discount_value),
       maxDiscountAmount: o.max_discount_amount ? Number(o.max_discount_amount) : null,
+      buyQuantity: o.buy_quantity,
+      rewardQuantity: o.reward_quantity,
+      rewardDiscountType: o.reward_discount_type,
       endDate: o.end_date
     })),
     categories: categories.map(cat => ({
@@ -323,6 +327,7 @@ const getPublicMenuByCafeId = async (cafeId) => {
           hasDiscount: pricing.hasDiscount,
           savingsPercent,
           appliedOffer: pricing.appliedOffer,
+          bogoOffer: pricing.bogoOffer || null,
           foodType: item.food_type,
           isAvailable: item.is_available,
           preparationTime: item.preparation_time,

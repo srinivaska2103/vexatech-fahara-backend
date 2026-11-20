@@ -62,6 +62,13 @@ const saveNotification = async (data) => {
           customer_phone: true,
           total_amount: true
         }
+      },
+      cafes: {
+        select: {
+          id: true,
+          name: true,
+          city: true
+        }
       }
     }
   });
@@ -75,6 +82,12 @@ const saveNotification = async (data) => {
 
 const getNotifications = async (userId, filters = {}) => {
   const where = { user_id: userId };
+
+  // Business / Cafe ID scoping filter
+  const targetCafeId = filters.cafe_id || filters.business_id || filters.cafeId;
+  if (targetCafeId && targetCafeId !== 'all') {
+    where.cafe_id = targetCafeId;
+  }
 
   // Status Filter
   if (filters.status && filters.status !== 'all') {
@@ -158,6 +171,13 @@ const getNotifications = async (userId, filters = {}) => {
           order_status: true,
           customer_name: true,
           total_amount: true
+        }
+      },
+      cafes: {
+        select: {
+          id: true,
+          name: true,
+          city: true
         }
       }
     }
@@ -254,6 +274,13 @@ const getNotificationById = async (userId, id) => {
           customer_name: true,
           customer_phone: true,
           total_amount: true
+        }
+      },
+      cafes: {
+        select: {
+          id: true,
+          name: true,
+          city: true
         }
       }
     }

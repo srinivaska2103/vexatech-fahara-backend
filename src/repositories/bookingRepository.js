@@ -199,7 +199,36 @@ const getBookingById = async (id) => {
 const getBookingsByCustomer = async (customerId) => {
   const bookings = await prisma.bookings.findMany({
     where: { customer_id: customerId },
-    include: {
+    select: {
+      id: true,
+      booking_number: true,
+      customer_id: true,
+      cafe_id: true,
+      package_id: true,
+      event_service_id: true,
+      booking_date: true,
+      start_time: true,
+      end_time: true,
+      hours: true,
+      total_persons: true,
+      cafe_amount: true,
+      event_service_amount: true,
+      food_amount: true,
+      decoration_amount: true,
+      extra_person_amount: true,
+      subtotal: true,
+      discount: true,
+      gst: true,
+      fahara_service_charge: true,
+      transaction_fee: true,
+      total: true,
+      payment_status: true,
+      booking_status: true,
+      special_request: true,
+      event_special_request: true,
+      inclusions: true,
+      created_at: true,
+      updated_at: true,
       cafes: {
         select: {
           id: true,
@@ -207,7 +236,6 @@ const getBookingsByCustomer = async (customerId) => {
           city: true,
           address: true,
           cover_image: true,
-          gallery: true,
           category: true,
         },
       },
@@ -215,7 +243,6 @@ const getBookingsByCustomer = async (customerId) => {
         select: {
           id: true,
           service_name: true,
-          gallery: true,
         },
       },
     },
@@ -226,7 +253,21 @@ const getBookingsByCustomer = async (customerId) => {
   const packageIds = [...new Set(bookings.map(b => b.package_id).filter(Boolean))];
   if (packageIds.length > 0) {
     const packages = await prisma.cafe_packages.findMany({
-      where: { id: { in: packageIds } }
+      where: { id: { in: packageIds } },
+      select: {
+        id: true,
+        cafe_id: true,
+        event_type: true,
+        package_name: true,
+        description: true,
+        price: true,
+        minimum_persons: true,
+        maximum_persons: true,
+        duration_hours: true,
+        duration_unit: true,
+        is_active: true,
+        inclusions: true,
+      }
     });
     const packageMap = new Map(packages.map(p => [p.id, p]));
     for (const b of bookings) {

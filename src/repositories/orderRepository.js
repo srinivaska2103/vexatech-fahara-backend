@@ -3,7 +3,10 @@ const prisma = require('../config/prisma');
 const orderRepository = {
   // Find order by ID with all relations
   async findOrderById(orderId) {
-    return prisma.food_orders.findUnique({
+    if (!orderId || typeof orderId !== 'string' || orderId.length !== 36) {
+      return null;
+    }
+    const order = await prisma.food_orders.findUnique({
       where: { id: orderId },
       include: {
         cafes: {
@@ -35,7 +38,11 @@ const orderRepository = {
             availability_status: true
           }
         },
-        order_items: true,
+        order_items: {
+          include: {
+            menu_item: true
+          }
+        },
         order_status_history: {
           orderBy: { created_at: 'desc' }
         },
@@ -49,24 +56,13 @@ const orderRepository = {
               orderBy: { created_at: 'asc' }
             }
           },
-          orderBy: { created_at: 'desc' }
-        },
-        order_assignments: {
-          include: {
-            employee: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-                vehicle_type: true,
-                vehicle_number: true
-              }
-            }
-          },
-          orderBy: { assigned_at: 'desc' }
+          orderBy: { created_at: 'desc' },
+          take: 1
         }
       }
     });
+
+    return order;
   },
 
   // Find order by Order Number
@@ -75,7 +71,11 @@ const orderRepository = {
       where: { order_number: orderNumber },
       include: {
         cafes: true,
-        order_items: true,
+        order_items: {
+          include: {
+            menu_item: true
+          }
+        },
         order_status_history: { orderBy: { created_at: 'desc' } },
         assigned_employee: true
       }
@@ -101,7 +101,11 @@ const orderRepository = {
         }
       },
       include: {
-        order_items: true,
+        order_items: {
+          include: {
+            menu_item: true
+          }
+        },
         order_status_history: true
       }
     });
@@ -183,12 +187,21 @@ const orderRepository = {
     return updatedOrder;
   },
 
-  // Customer's order list
+  // Customer's order list - only show verified paid orders or active lifecycle orders
   async findCustomerOrders(customerId, { page = 1, limit = 20 }) {
     const skip = (page - 1) * limit;
+    const where = {
+      customer_id: customerId,
+      // Only include orders that have verified payment (PAID) or non-cancelled/non-new progression
+      OR: [
+        { payment_status: 'PAID' },
+        { order_status: { in: ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'] } }
+      ]
+    };
+
     const [orders, total] = await Promise.all([
       prisma.food_orders.findMany({
-        where: { customer_id: customerId },
+        where,
         include: {
           cafes: {
             select: {
@@ -198,7 +211,11 @@ const orderRepository = {
               cover_image: true
             }
           },
-          order_items: true,
+          order_items: {
+            include: {
+              menu_item: true
+            }
+          },
           assigned_employee: {
             select: {
               name: true,
@@ -211,7 +228,7 @@ const orderRepository = {
         skip,
         take: limit
       }),
-      prisma.food_orders.count({ where: { customer_id: customerId } })
+      prisma.food_orders.count({ where })
     ]);
 
     return { orders, total, page, limit };
@@ -229,7 +246,14 @@ const orderRepository = {
       limit = 30
     } = filters;
 
-    const where = { cafe_id: cafeId };
+    const where = {
+      cafe_id: cafeId,
+      // Only display orders that are paid or active in kitchen fulfillment
+      OR: [
+        { payment_status: 'PAID' },
+        { order_status: { in: ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'] } }
+      ]
+    };
 
     if (status && status !== 'ALL') {
       where.order_status = status;
@@ -257,7 +281,11 @@ const orderRepository = {
       prisma.food_orders.findMany({
         where,
         include: {
-          order_items: true,
+          order_items: {
+          include: {
+            menu_item: true
+          }
+        },
           assigned_employee: {
             select: {
               id: true,
@@ -371,7 +399,11 @@ const orderRepository = {
             city: true
           }
         },
-        order_items: true,
+        order_items: {
+          include: {
+            menu_item: true
+          }
+        },
         order_status_history: {
           orderBy: { created_at: 'desc' }
         }

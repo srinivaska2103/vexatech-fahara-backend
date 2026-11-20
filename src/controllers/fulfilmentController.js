@@ -370,6 +370,55 @@ const fulfilmentController = {
     }
   },
 
+  // POST /api/v1/delivery/orders/:id/location
+  // Send driver GPS location update and broadcast to tracking room
+  async updateDeliveryLocation(req, res, next) {
+    try {
+      const employeeId = req.headers['x-employee-id'] || req.body.employeeId;
+      const orderId = req.params.id;
+      const { latitude, longitude, accuracy, heading, speed } = req.body;
+
+      if (!employeeId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Delivery employee authentication required'
+        });
+      }
+
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: 'Latitude and longitude are required'
+        });
+      }
+
+      const numLat = parseFloat(latitude);
+      const numLng = parseFloat(longitude);
+
+      if (isNaN(numLat) || isNaN(numLng) || numLat < -90 || numLat > 90 || numLng < -180 || numLng > 180) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid latitude and longitude coordinates are required'
+        });
+      }
+
+      const locationRecord = await orderService.recordDriverLocation(orderId, employeeId, {
+        latitude: numLat,
+        longitude: numLng,
+        accuracy: accuracy !== undefined ? parseFloat(accuracy) : null,
+        heading: heading !== undefined ? parseFloat(heading) : null,
+        speed: speed !== undefined ? parseFloat(speed) : null
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: locationRecord
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // GET /api/v1/public/cafes/:cafeId/availability
   async getPublicCafeAvailability(req, res, next) {
     try {
