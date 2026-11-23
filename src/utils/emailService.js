@@ -226,7 +226,7 @@ const sendAdminSystemAlertEmail = async ({ alertType, message, details, source }
 
 const sendBirthdayPromotionalEmail = async (email, name) => {
   const subject = `🎉 Celebrate Your Birthday with Grab2GO! Special Cafe Offers Inside 🎂`;
-  const text = `Hi ${name || 'Valued Guest'},\n\nYour birthday is just 30 days away! Celebrate your birthday with Grab2GO and get special birthday offers at cafes.\n\nBook now at https://fahara.in`;
+  const text = `Hi ${name || 'Valued Guest'},\n\nYour birthday is just 30 days away! Celebrate your birthday with Grab2GO and get special birthday offers at cafes.\n\nBook now at https://grab2go.in`;
   const html = templates.getBirthdayPromotionalTemplate(name);
 
   await sendEmail(email, subject, text, html);

@@ -25,7 +25,7 @@ const formatCurrency = (amt) => {
  * Base Email Layout Wrapper
  */
 const getBaseLayout = ({ title, preheader, content, ctaUrl, ctaText }) => {
-  const portalUrl = ctaUrl || 'https://fahara.in';
+  const portalUrl = ctaUrl || 'https://grab2go.in';
 
   return `
 <!DOCTYPE html>
@@ -255,7 +255,7 @@ const getNewOrderOwnerEmail = (order, cafeOwner, portalUrl) => {
       title: `New Food Order Received – Grab2Go #${order.order_number}`,
       preheader: `New order #${order.order_number} for ${order.cafes?.name}. Total: ${formatCurrency(order.total_amount)}`,
       content,
-      ctaUrl: portalUrl || `https://cafe.fahara.in/owner/orders`,
+      ctaUrl: portalUrl || `https://cafe.grab2go.in/owner/orders`,
       ctaText: 'View Order in Dashboard'
     }),
     text: `New food order received for ${order.cafes?.name}!\nOrder Number: #${order.order_number}\nCustomer: ${order.customer_name} (${order.customer_phone})\nTotal: ${formatCurrency(order.total_amount)}\nPayment Status: ${order.payment_status}\nView details in your Grab2Go cafe portal.`
@@ -318,7 +318,7 @@ const getPaymentSuccessfulOwnerEmail = ({ order, payment, breakdown, portalUrl }
       title: `Payment Received – Grab2Go Order #${order.order_number}`,
       preheader: `Payment confirmed for order #${order.order_number}. Amount: ${formatCurrency(order.total_amount)}`,
       content,
-      ctaUrl: portalUrl || `https://cafe.fahara.in/owner/orders`,
+      ctaUrl: portalUrl || `https://cafe.grab2go.in/owner/orders`,
       ctaText: 'Open Order Details'
     }),
     text: `Payment Received for Order #${order.order_number}!\nCustomer Amount: ${formatCurrency(order.total_amount)}\nStatus: PAID\nRestaurant: ${order.cafes?.name}`
@@ -352,7 +352,7 @@ const getPreparationStartedCustomerEmail = (order, customer, trackingUrl) => {
       title: `Your Food Is Being Prepared! – Grab2Go #${order.order_number}`,
       preheader: `${order.cafes?.name} is preparing your food order #${order.order_number}!`,
       content,
-      ctaUrl: trackingUrl || `https://fahara.in/customer/orders/${order.id}`,
+      ctaUrl: trackingUrl || `https://grab2go.in/customer/orders/${order.id}`,
       ctaText: 'Track Your Order Live'
     }),
     text: `Hi ${order.customer_name}, great news! ${order.cafes?.name} has started preparing your food order #${order.order_number}. Track live: ${trackingUrl}`
@@ -407,7 +407,7 @@ const getOrderReadyCustomerEmail = (order, customer, trackingUrl) => {
       title: `Your Order Is Ready! – Grab2Go #${order.order_number}`,
       preheader: isTakeaway ? `Order #${order.order_number} is ready for pickup at ${cafe.name}!` : `Order #${order.order_number} is ready for delivery handover!`,
       content,
-      ctaUrl: trackingUrl || `https://fahara.in/customer/orders/${order.id}`,
+      ctaUrl: trackingUrl || `https://grab2go.in/customer/orders/${order.id}`,
       ctaText: 'View Order Status'
     }),
     text: `Your Grab2Go order #${order.order_number} from ${cafe.name} is ready! ${isTakeaway ? 'Please visit the restaurant to collect it.' : 'It is being handed over for delivery.'}`
@@ -470,7 +470,7 @@ const getDeliveryAssignedCustomerEmail = ({ order, employee, trackingUrl }) => {
       title: `Your Order Delivery Details – Grab2Go #${order.order_number}`,
       preheader: `Delivery executive assigned for Grab2Go order #${order.order_number}`,
       content,
-      ctaUrl: trackingUrl || `https://fahara.in/customer/orders/${order.id}`,
+      ctaUrl: trackingUrl || `https://grab2go.in/customer/orders/${order.id}`,
       ctaText: 'Track Delivery Live'
     }),
     text: `Your Grab2Go order #${order.order_number} has been assigned to ${employee?.name || 'a delivery executive'}. Tracking link: ${trackingUrl}`
@@ -559,7 +559,7 @@ const getOrderCancelledOwnerEmail = ({ order, reason, portalUrl }) => {
       title: `Order Cancelled – Grab2Go #${order.order_number}`,
       preheader: `Customer has cancelled order #${order.order_number} for ${order.cafes?.name}`,
       content,
-      ctaUrl: portalUrl || `https://cafe.fahara.in/owner/orders`,
+      ctaUrl: portalUrl || `https://cafe.grab2go.in/owner/orders`,
       ctaText: 'Open Cafe Dashboard'
     }),
     text: `Order #${order.order_number} has been cancelled by the customer. Restaurant: ${order.cafes?.name}. Reason: ${reason || 'Customer requested'}`
@@ -664,7 +664,7 @@ const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) =
         title: `Your Grab2Go Order Cancellation & Refund Update`,
         preheader: `Refund of ${formatCurrency(refundAmt)} initiated for cancelled order #${order.order_number}`,
         content,
-        ctaUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`,
+        ctaUrl: `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`,
         ctaText: 'Track Live Refund Status'
       }),
       text: `Your refund request of ${formatCurrency(refundAmt)} for Grab2Go order #${order.order_number} has been initiated successfully. The amount will be credited according to your bank or payment provider's processing timeline.`
@@ -750,7 +750,7 @@ const getRefundCustomerEmail = ({ type = 'INITIATED', order, refund, amount }) =
         title: `Your Grab2Go Refund Has Been Credited!`,
         preheader: `Refund of ${formatCurrency(refundAmt)} credited for order #${order.order_number}`,
         content,
-        ctaUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`,
+        ctaUrl: `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`,
         ctaText: 'View Refund Details'
       }),
       text: `Good news! Your refund of ${formatCurrency(refundAmt)} for Grab2Go order #${order.order_number} has been successfully processed. The refund has been credited to your original payment method, subject to the confirmation provided by your payment provider.`
@@ -865,7 +865,7 @@ const getNewOrderCustomerConfirmationEmail = (order, trackingUrl) => {
       title: `Order Confirmation – Grab2Go #${order.order_number}`,
       preheader: `Thank you for ordering with Grab2Go! Order #${order.order_number} has been received.`,
       content,
-      ctaUrl: trackingUrl || `https://fahara.in/customer/orders/${order.id}`,
+      ctaUrl: trackingUrl || `https://grab2go.in/customer/orders/${order.id}`,
       ctaText: 'Track Order Status'
     }),
     text: `Thank you for ordering with Grab2Go! Order #${order.order_number} for ${cafe.name} has been received. Track here: ${trackingUrl}`
@@ -920,7 +920,7 @@ const getPaymentSuccessfulCustomerEmail = ({ order, payment, trackingUrl }) => {
       title: `Payment Receipt – Grab2Go Order #${order.order_number}`,
       preheader: `Payment of ${formatCurrency(order.total_amount)} confirmed for order #${order.order_number}`,
       content,
-      ctaUrl: trackingUrl || `https://fahara.in/customer/orders/${order.id}`,
+      ctaUrl: trackingUrl || `https://grab2go.in/customer/orders/${order.id}`,
       ctaText: 'Track Order'
     }),
     text: `Payment of ${formatCurrency(order.total_amount)} confirmed for Grab2Go order #${order.order_number}. Track order: ${trackingUrl}`
@@ -957,7 +957,7 @@ const getOrderCompletedCustomerEmail = (order, reviewUrl) => {
       title: `Order Completed – Grab2Go #${order.order_number}`,
       preheader: `Your Grab2Go order #${order.order_number} has been completed!`,
       content,
-      ctaUrl: reviewUrl || `https://fahara.in/customer/orders/${order.id}`,
+      ctaUrl: reviewUrl || `https://grab2go.in/customer/orders/${order.id}`,
       ctaText: 'Rate & Review Order'
     }),
     text: `Your Grab2Go order #${order.order_number} has been completed! Thank you for ordering with us.`
@@ -1052,7 +1052,7 @@ const getOrderCancelledCustomerEmail = ({ order, reason, isRefundEligible, refun
       title: `Order Cancelled – Grab2GO #${order.order_number}`,
       preheader: `Your order #${order.order_number} has been cancelled`,
       content,
-      ctaUrl: trackingUrl || `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`,
+      ctaUrl: trackingUrl || `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`,
       ctaText: isPaid ? 'Track Your Refund Status' : 'View Order Details'
     }),
     text: `Your Grab2GO order #${order.order_number} has been cancelled. Restaurant: ${order.cafes?.name}. Reason: ${reason || 'Customer requested'}`

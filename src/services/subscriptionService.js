@@ -76,9 +76,9 @@ const resolvePartnerDetails = (user, businessType = 'CAFE') => {
 
   const partnerName = user?.name || businessName || 'Partner';
 
-  const CAFE_FRONTEND_URL = process.env.CAFE_FRONTEND_URL || 'https://cafe.fahara.in';
-  const EM_FRONTEND_URL = process.env.EM_FRONTEND_URL || 'https://em.fahara.in';
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fahara.in';
+  const CAFE_FRONTEND_URL = process.env.CAFE_FRONTEND_URL || 'https://cafe.grab2go.in';
+  const EM_FRONTEND_URL = process.env.EM_FRONTEND_URL || 'https://em.grab2go.in';
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'https://grab2go.in';
 
   let dashboardUrl = `${CAFE_FRONTEND_URL}/owner/dashboard`;
   let subscriptionPageUrl = `${CAFE_FRONTEND_URL}/owner/subscription`;

@@ -51,7 +51,7 @@ class FoodOrderEmailEvents {
         const ownerContent = templates.getNewOrderOwnerEmail(
           order,
           order.cafes.users,
-          process.env.CAFE_PORTAL_URL || 'https://cafe.fahara.in/owner/orders'
+          process.env.CAFE_PORTAL_URL || 'https://cafe.grab2go.in/owner/orders'
         );
 
         await queue.enqueue({
@@ -72,7 +72,7 @@ class FoodOrderEmailEvents {
         const custEventKey = `order:${order.id}:created:customer`;
         const custContent = templates.getNewOrderCustomerConfirmationEmail(
           order,
-          `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+          `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
         );
 
         await queue.enqueue({
@@ -106,7 +106,7 @@ class FoodOrderEmailEvents {
         const ownerContent = templates.getPaymentSuccessfulOwnerEmail({
           order,
           payment: paymentData,
-          portalUrl: process.env.CAFE_PORTAL_URL || 'https://cafe.fahara.in/owner/orders'
+          portalUrl: process.env.CAFE_PORTAL_URL || 'https://cafe.grab2go.in/owner/orders'
         });
 
         await queue.enqueue({
@@ -128,7 +128,7 @@ class FoodOrderEmailEvents {
         const custContent = templates.getPaymentSuccessfulCustomerEmail({
           order,
           payment: paymentData,
-          trackingUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+          trackingUrl: `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
         });
 
         await queue.enqueue({
@@ -162,7 +162,7 @@ class FoodOrderEmailEvents {
       const emailContent = templates.getPreparationStartedCustomerEmail(
         order,
         order.users,
-        `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+        `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
       );
 
       await queue.enqueue({
@@ -195,7 +195,7 @@ class FoodOrderEmailEvents {
       const emailContent = templates.getOrderReadyCustomerEmail(
         order,
         order.users,
-        `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+        `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
       );
 
       await queue.enqueue({
@@ -232,7 +232,7 @@ class FoodOrderEmailEvents {
       const emailContent = templates.getDeliveryAssignedCustomerEmail({
         order,
         employee,
-        trackingUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+        trackingUrl: `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
       });
 
       await queue.enqueue({
@@ -264,7 +264,7 @@ class FoodOrderEmailEvents {
       const eventKey = `order:${order.id}:completed:customer`;
       const emailContent = templates.getOrderCompletedCustomerEmail(
         order,
-        `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+        `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
       );
 
       await queue.enqueue({
@@ -308,7 +308,7 @@ class FoodOrderEmailEvents {
         const emailContent = templates.getOrderCancelledOwnerEmail({
           order,
           reason,
-          portalUrl: process.env.CAFE_PORTAL_URL || 'https://cafe.fahara.in/owner/orders'
+          portalUrl: process.env.CAFE_PORTAL_URL || 'https://cafe.grab2go.in/owner/orders'
         });
 
         await queue.enqueue({
@@ -332,7 +332,7 @@ class FoodOrderEmailEvents {
           reason,
           isRefundEligible: order.payment_status === 'PAID' || Boolean(refundInfo),
           refundAmount: refundInfo?.refund_amount || Number(order.total_amount),
-          trackingUrl: `${process.env.CUSTOMER_APP_URL || 'https://fahara.in'}/customer/orders/${order.id}`
+          trackingUrl: `${process.env.CUSTOMER_APP_URL || 'https://grab2go.in'}/customer/orders/${order.id}`
         });
 
         await queue.enqueue({
