@@ -80,7 +80,7 @@ app.use((req, res, next) => {
       return res.redirect(`${frontendUrl}${req.originalUrl}`);
     }
     if (req.path.startsWith('/owner')) {
-      const cafeFrontendUrl = process.env.CAFE_FRONTEND_URL || 'http://localhost:3002';
+      const cafeFrontendUrl = process.env.CAFE_FRONTEND_URL || 'http://localhost:52';
       return res.redirect(`${cafeFrontendUrl}${req.originalUrl}`);
     }
     if (req.path.startsWith('/admin')) {
